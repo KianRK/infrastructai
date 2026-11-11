@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 PY_PROJECTS := training serving
 
-.PHONY: help install lint format typecheck test check
+.PHONY: help install lint format typecheck test check data-download data-prepare
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -26,3 +26,9 @@ test: ## Run all tests
 	cd frontend && npm test
 
 check: lint typecheck test ## Everything CI runs
+
+data-download: ## Download the configured RDD2022 countries (resumable; ~13 GB for all)
+	cd training && uv run python -m rdd.download
+
+data-prepare: ## Convert VOC annotations to YOLO format and create the train/val/test split
+	cd training && uv run python -m rdd.prepare

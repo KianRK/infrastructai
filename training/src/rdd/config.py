@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 
 class _StrictModel(BaseModel):
@@ -30,6 +30,17 @@ class SplitConfig(_StrictModel):
         return self
 
 
+class DownloadConfig(_StrictModel):
+    url: HttpUrl
+    archive_prefix: str
+    keep_archives: bool = False
+
+
+class PrepareConfig(_StrictModel):
+    max_image_side: int | None = Field(default=None, ge=64)
+    jpeg_quality: int = Field(default=90, ge=1, le=95)
+
+
 class PathsConfig(_StrictModel):
     raw: Path
     processed: Path
@@ -38,6 +49,8 @@ class PathsConfig(_StrictModel):
 class DataConfig(_StrictModel):
     classes: dict[str, str] = Field(min_length=1)
     countries: list[str] = Field(min_length=1)
+    download: DownloadConfig
+    prepare: PrepareConfig
     split: SplitConfig
     paths: PathsConfig
 

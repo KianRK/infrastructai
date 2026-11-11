@@ -1,4 +1,5 @@
 # Data pipeline configuration. Loaded and validated by rdd.config.DataConfig.
+# Relative paths are resolved against the directory the commands are run from (training/).
 
 # Damage classes kept for training, in class-index order. RDD2022 annotations
 # contain further labels (e.g. D43, D44, D50, Repair) that are dropped.
@@ -18,7 +19,21 @@ countries:
   - China_MotorBike
   - China_Drone
 
-# RDD2022 ships labels for its train split only, so we split it ourselves.
+download:
+  # RDD2022 on figshare (CC BY 4.0): one 13 GB zip that stores one zip per country.
+  # The downloader fetches only the configured countries via HTTP range requests.
+  url: https://ndownloader.figshare.com/files/38030910
+  archive_prefix: RDD2022/
+  keep_archives: false
+
+prepare:
+  # Images whose longer side exceeds this are downscaled (Norway is ~3650 px wide,
+  # which only slows down data loading when training at 640 px). null keeps originals.
+  max_image_side: 1280
+  jpeg_quality: 90
+
+# RDD2022 ships labels for its train split only, so we split it ourselves,
+# stratified by country.
 split:
   train: 0.8
   val: 0.1
