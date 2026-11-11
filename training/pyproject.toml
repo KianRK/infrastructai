@@ -6,14 +6,51 @@ requires-python = ">=3.12,<3.13"
 license = "AGPL-3.0-or-later"
 dependencies = [
     "defusedxml>=0.7.1,<1",
+    # Capped by azureml-mlflow, which pins mlflow-skinny<=3.15 (as of 1.62.0.post6).
+    "mlflow>=3.15,<3.16",
+    "onnx>=1.23,<2",
+    "onnxslim>=0.1.99",
     "pillow>=11,<13",
     "pydantic>=2.9,<3",
     "pyyaml>=6.0.2,<7",
+    "ultralytics>=8.4.210,<8.5",
 ]
+
+# Exactly one of cpu/gpu must be selected: `uv sync --extra gpu` (training machine)
+# or `uv sync --extra cpu` (CI, smoke tests). `azure` adds the Azure ML MLflow plugin.
+[project.optional-dependencies]
+cpu = ["torch>=2.14,<2.15", "torchvision>=0.29,<0.30"]
+gpu = ["torch>=2.14,<2.15", "torchvision>=0.29,<0.30"]
+azure = ["azureml-mlflow>=1.62.0.post6"]
+
+[tool.uv]
+environments = ["sys_platform == 'linux'"]
+conflicts = [[{ extra = "cpu" }, { extra = "gpu" }]]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cuda", extra = "gpu" },
+]
+torchvision = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cuda", extra = "gpu" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
 
 [dependency-groups]
 dev = [
     "mypy>=1.13",
+    "onnxruntime>=1.31,<2",
     "pytest>=8.3",
     "ruff>=0.17",
     "types-defusedxml>=0.7.0.20260504",
@@ -30,9 +67,15 @@ packages = ["src/rdd"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config"
+markers = ["slow: trains a tiny model on CPU (about a minute)"]
 xfail_strict = true
 
 [tool.mypy]
 strict = true
 files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["ultralytics.*", "onnx.*", "onnxruntime.*", "mlflow.*"]
+ignore_missing_imports = true
+follow_imports = "skip"

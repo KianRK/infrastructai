@@ -4,7 +4,7 @@ End-to-end road damage analysis: upload a road photo, an object detector trained
 RDD2022 localises the damage, and a small self-hosted LLM describes it. Served with
 Ray Serve on Azure Kubernetes Service.
 
-> **Status: work in progress.** Milestone 2 of 12 (data pipeline). The full
+> **Status: work in progress.** Milestone 3 of 12 (training pipeline). The full
 > README (architecture, deployment, cost, model card) is written in the final milestone.
 
 ## Repository layout
@@ -21,7 +21,7 @@ Ray Serve on Azure Kubernetes Service.
 Prerequisites: [uv](https://docs.astral.sh/uv/), Node.js 24, GNU Make.
 
 ```bash
-make install   # uv sync for both Python projects, npm ci for the frontend
+make install   # uv sync for both Python projects (TORCH=cpu for CPU-only PyTorch), npm ci
 make check     # lint + type-check + tests, the same steps CI runs
 make help      # all targets
 ```
@@ -45,6 +45,27 @@ make data-prepare    # VOC XML -> YOLO labels, stratified 80/10/10 split, datase
   clipped to the image and empty boxes removed. Images without damage are kept as background.
 - **Split:** RDD2022 publishes labels for its train split only, so that split is divided
   80/10/10 per country with a fixed seed. Images larger than 1280 px are downscaled.
+
+## Training
+
+```bash
+make train       # train -> evaluate on the test split -> ONNX export -> quality gate -> register
+make mlflow-ui   # inspect runs and the model registry
+```
+
+All hyperparameters live in `training/configs/train.yaml` (YOLO26s, 640 px, batch 16, mixed
+precision; about 5 GB VRAM). Each pipeline execution is one MLflow run with the full config as
+parameters, per-epoch training metrics, test-split mAP@0.5, mAP@0.5:0.95 and per-class metrics.
+
+- **Quality gate:** the ONNX model is registered as `roadscan-detector` and given the alias
+  `production` only if the configured test metric reaches the threshold. Otherwise the command
+  exits with status 2 and nothing is registered.
+- **Export:** ONNX with embedded NMS, so the serving image needs only ONNX Runtime.
+- **Tracking server:** a local SQLite-backed MLflow store by default. Setting
+  `MLFLOW_TRACKING_URI` to an Azure ML workspace switches tracking and registry there
+  (`uv sync --extra gpu --extra azure`). To register an already trained checkpoint against
+  another server without retraining:
+  `uv run python -m rdd.pipeline --weights runs/<run>/weights/best.pt`
 
 ## License
 

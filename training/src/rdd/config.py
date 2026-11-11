@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Self
+from typing import Any, Literal, Self
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
@@ -58,6 +58,64 @@ class DataConfig(_StrictModel):
     def class_ids(self) -> list[str]:
         """Class codes in class-index order (the order they appear in the config)."""
         return list(self.classes)
+
+    @classmethod
+    def from_yaml(cls, path: Path) -> Self:
+        with path.open(encoding="utf-8") as fh:
+            return cls.model_validate(yaml.safe_load(fh))
+
+
+class ModelConfig(_StrictModel):
+    weights: str
+
+
+class TrainParams(_StrictModel):
+    epochs: int = Field(ge=1)
+    imgsz: int = Field(ge=32, multiple_of=32)
+    batch: int = Field(ge=1)
+    amp: bool = True
+    workers: int = Field(default=8, ge=0)
+    patience: int = Field(default=20, ge=0)
+    seed: int = 42
+    device: str = "0"
+    plots: bool = True
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+
+class EvaluateConfig(_StrictModel):
+    split: Literal["val", "test"] = "test"
+    conf: float = Field(default=0.001, gt=0, lt=1)
+
+
+class ExportConfig(_StrictModel):
+    dynamic: bool = False
+    simplify: bool = True
+    conf: float = Field(default=0.10, gt=0, lt=1)
+    iou: float = Field(default=0.5, gt=0, lt=1)
+    max_det: int = Field(default=100, ge=1)
+
+
+class MlflowConfig(_StrictModel):
+    tracking_uri: str
+    experiment: str
+    registered_model: str
+
+
+class GateConfig(_StrictModel):
+    metric: Literal["map50", "map50_95"]
+    threshold: float = Field(ge=0, le=1)
+    alias: str = Field(min_length=1)
+
+
+class TrainConfig(_StrictModel):
+    data: Path
+    output_dir: Path
+    model: ModelConfig
+    train: TrainParams
+    evaluate: EvaluateConfig
+    export: ExportConfig
+    mlflow: MlflowConfig
+    gate: GateConfig
 
     @classmethod
     def from_yaml(cls, path: Path) -> Self:

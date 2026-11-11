@@ -19,7 +19,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [training, serving]
+        include:
+          - project: training
+            sync-args: --extra cpu # CPU-only PyTorch; also runs the training smoke test
+          - project: serving
+            sync-args: ""
+    env:
+      UV_NO_SYNC: "1" # `uv run` must not re-resolve and drop the selected extras
     defaults:
       run:
         working-directory: ${{ matrix.project }}
@@ -30,7 +36,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: ${{ matrix.project }}/uv.lock
       - name: Install dependencies
-        run: uv sync --locked
+        run: uv sync --locked ${{ matrix.sync-args }}
       - name: Ruff lint
         run: uv run ruff check --output-format=github .
       - name: Ruff format

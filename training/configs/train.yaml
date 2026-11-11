@@ -1,0 +1,52 @@
+# Training pipeline configuration. Loaded and validated by rdd.config.TrainConfig.
+# Sized for an RTX 4060 with 8 GB VRAM.
+
+# Dataset definition written by `python -m rdd.prepare`.
+data: data/processed/dataset.yaml
+# Training runs, checkpoints, and exported models (git-ignored).
+output_dir: runs
+
+model:
+  # Pretrained checkpoint (downloaded on first use) or a model YAML for random init.
+  weights: yolo26s.pt
+
+train:
+  epochs: 100
+  imgsz: 640
+  batch: 16
+  amp: true        # mixed precision: roughly halves VRAM use
+  workers: 8
+  patience: 20     # early stopping: epochs without validation improvement
+  seed: 42
+  device: "0"      # CUDA device index, or "cpu"
+  plots: true
+  # Passed through to Ultralytics `train()`, e.g. augmentation or optimiser overrides.
+  extra: {}
+
+evaluate:
+  split: test      # held out; never used for early stopping or model selection
+  conf: 0.001
+
+export:
+  dynamic: false   # fixed 1x3xHxW input keeps ONNX Runtime on CPU simple and fast
+  simplify: true
+  # Non-maximum suppression is embedded in the ONNX graph, so the model outputs final
+  # boxes with shape (1, max_det, 6): x1, y1, x2, y2, confidence, class (zero-padded).
+  # conf is the lowest confidence the model can ever return; serving may filter higher.
+  conf: 0.10
+  iou: 0.5
+  max_det: 100
+
+mlflow:
+  # The MLFLOW_TRACKING_URI environment variable overrides this, which is how the
+  # Azure ML workspace is selected without changing the config.
+  tracking_uri: sqlite:///mlflow.db
+  experiment: roadscan-rdd2022
+  registered_model: roadscan-detector
+
+gate:
+  # The model is registered only if this test-split metric is at least the threshold.
+  metric: map50    # map50 | map50_95
+  threshold: 0.50
+  # Alias set on the newly registered version; the serving stack loads this alias.
+  alias: production

@@ -37,3 +37,4 @@ node_modules/
 .vscode/
 .idea/
 .DS_Store
+mlflow.db
