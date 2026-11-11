@@ -4,6 +4,8 @@ PY_PROJECTS := training serving
 TORCH ?= gpu
 # `uv run` must not re-sync, or it would remove the selected PyTorch extra.
 export UV_NO_SYNC := 1
+# Ray workers inherit the interpreter instead of being re-launched through `uv run`.
+export RAY_ENABLE_UV_RUN_RUNTIME_ENV := 0
 
 .PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui serve-local
 

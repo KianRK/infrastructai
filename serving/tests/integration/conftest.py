@@ -1,3 +1,4 @@
+import os
 import socket
 from collections.abc import Iterator
 
@@ -8,6 +9,12 @@ from ray import serve
 
 from app.main import build_app
 from app.settings import AppArgs
+
+
+# When started through `uv run`, Ray launches its workers with `uv run` as well, which
+# resolves a different environment (without Ray) from the workers' working directory.
+# Workers must simply inherit this interpreter.
+os.environ["RAY_ENABLE_UV_RUN_RUNTIME_ENV"] = "0"
 
 
 def _free_port() -> int:
