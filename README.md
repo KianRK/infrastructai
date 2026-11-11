@@ -4,7 +4,7 @@ End-to-end road damage analysis: upload a road photo, an object detector trained
 RDD2022 localises the damage, and a small self-hosted LLM describes it. Served with
 Ray Serve on Azure Kubernetes Service.
 
-> **Status: work in progress.** Milestone 3 of 12 (training pipeline). The full
+> **Status: work in progress.** Milestone 4 of 12 (Ray Serve application with dummy models). The full
 > README (architecture, deployment, cost, model card) is written in the final milestone.
 
 ## Repository layout
@@ -66,6 +66,19 @@ parameters, per-epoch training metrics, test-split mAP@0.5, mAP@0.5:0.95 and per
   (`uv sync --extra gpu --extra azure`). To register an already trained checkpoint against
   another server without retraining:
   `uv run python -m rdd.pipeline --weights runs/<run>/weights/best.pt`
+
+## Serving
+
+```bash
+make serve-local   # dummy detector and LLM, no weights needed
+curl -F file=@road.jpg http://localhost:8000/api/analyze
+```
+
+One Ray Serve application with three deployments, composed through deployment handles:
+`Api` (FastAPI ingress) -> `Detector` -> `Describer` (LLM). Backends are selected in the Serve
+config file (`serving/config/serve.*.yaml`), which also sets replicas and CPU per deployment.
+The response schema is defined with Pydantic (`serving/src/app/schemas.py`) and committed as
+JSON Schema in `serving/contract/`; a contract test fails when the two diverge.
 
 ## License
 

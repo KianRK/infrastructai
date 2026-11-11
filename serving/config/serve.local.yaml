@@ -1,0 +1,27 @@
+# Ray Serve config for local development with dummy models (no weights needed):
+#   uv run serve run config/serve.local.yaml
+# The API is then available at http://localhost:8000/api (docs at /api/docs).
+proxy_location: HeadOnly
+http_options:
+  host: 127.0.0.1
+  port: 8000
+
+applications:
+  - name: roadscan
+    route_prefix: /
+    import_path: app.main:build_app
+    args:
+      detector:
+        backend: dummy
+      llm:
+        backend: dummy
+    deployments:
+      - name: Api
+        num_replicas: 1
+        ray_actor_options: { num_cpus: 0.25 }
+      - name: Detector
+        num_replicas: 1
+        ray_actor_options: { num_cpus: 0.5 }
+      - name: Describer
+        num_replicas: 1
+        ray_actor_options: { num_cpus: 0.5 }

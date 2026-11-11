@@ -5,14 +5,21 @@ description = "Ray Serve application for RoadScan: API, detector, and LLM deploy
 requires-python = ">=3.12,<3.13"
 license = "AGPL-3.0-or-later"
 dependencies = [
+    "numpy>=2,<3",
+    "pillow>=11,<13",
     "pydantic>=2.9,<3",
+    "python-multipart>=0.0.20",
+    "ray[serve]>=2.59,<2.60",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28",
     "mypy>=1.13",
     "pytest>=8.3",
+    "pytest-timeout>=2.3",
     "ruff>=0.17",
+    "types-pyyaml>=6.0.12",
 ]
 
 [build-system]
@@ -25,6 +32,7 @@ packages = ["src/app"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config"
+timeout = 180 # a Serve app that cannot be scheduled would otherwise hang forever
 xfail_strict = true
 
 [tool.mypy]

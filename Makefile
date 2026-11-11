@@ -5,7 +5,7 @@ TORCH ?= gpu
 # `uv run` must not re-sync, or it would remove the selected PyTorch extra.
 export UV_NO_SYNC := 1
 
-.PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui
+.PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui serve-local
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -43,3 +43,6 @@ train: ## Train, evaluate, export, and register the detector (config: training/c
 
 mlflow-ui: ## Browse local experiments and the model registry at http://localhost:5000
 	cd training && uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
+
+serve-local: ## Run the Ray Serve app with dummy models at http://localhost:8000/api/docs
+	cd serving && uv run serve run config/serve.local.yaml

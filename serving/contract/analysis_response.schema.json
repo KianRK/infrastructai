@@ -1,0 +1,125 @@
+{
+  "$defs": {
+    "BoundingBox": {
+      "additionalProperties": false,
+      "description": "Axis-aligned box in coordinates relative to the image size (0..1).\n\nRelative coordinates let the frontend draw boxes at any display size\nwithout knowing how the image was resized for inference.",
+      "properties": {
+        "x_min": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "X Min",
+          "type": "number"
+        },
+        "y_min": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Y Min",
+          "type": "number"
+        },
+        "x_max": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "X Max",
+          "type": "number"
+        },
+        "y_max": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Y Max",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x_min",
+        "y_min",
+        "x_max",
+        "y_max"
+      ],
+      "title": "BoundingBox",
+      "type": "object"
+    },
+    "DamageClass": {
+      "enum": [
+        "D00",
+        "D10",
+        "D20",
+        "D40"
+      ],
+      "title": "DamageClass",
+      "type": "string"
+    },
+    "Detection": {
+      "additionalProperties": false,
+      "properties": {
+        "damage_class": {
+          "$ref": "#/$defs/DamageClass"
+        },
+        "label": {
+          "description": "Human-readable class name, e.g. 'pothole'.",
+          "title": "Label",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "box": {
+          "$ref": "#/$defs/BoundingBox"
+        }
+      },
+      "required": [
+        "damage_class",
+        "label",
+        "confidence",
+        "box"
+      ],
+      "title": "Detection",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "detections": {
+      "items": {
+        "$ref": "#/$defs/Detection"
+      },
+      "title": "Detections",
+      "type": "array"
+    },
+    "description": {
+      "description": "LLM-written summary grounded in the detections.",
+      "title": "Description",
+      "type": "string"
+    },
+    "image_width": {
+      "exclusiveMinimum": 0,
+      "title": "Image Width",
+      "type": "integer"
+    },
+    "image_height": {
+      "exclusiveMinimum": 0,
+      "title": "Image Height",
+      "type": "integer"
+    },
+    "detector_version": {
+      "title": "Detector Version",
+      "type": "string"
+    },
+    "llm_model": {
+      "title": "Llm Model",
+      "type": "string"
+    }
+  },
+  "required": [
+    "detections",
+    "description",
+    "image_width",
+    "image_height",
+    "detector_version",
+    "llm_model"
+  ],
+  "title": "AnalysisResponse",
+  "type": "object"
+}
