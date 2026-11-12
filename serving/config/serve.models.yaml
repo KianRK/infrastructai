@@ -1,0 +1,39 @@
+# Ray Serve config with the real models, sized for a small CPU node:
+#   MLFLOW_TRACKING_URI=http://localhost:5000 uv run serve run config/serve.models.yaml
+# The detector is the registry version carrying the "production" alias; the LLM is
+# downloaded from Hugging Face on first start (about 1.1 GB) and cached.
+proxy_location: HeadOnly
+http_options:
+  host: 127.0.0.1
+  port: 8000
+
+applications:
+  - name: roadscan
+    route_prefix: /
+    import_path: app.main:build_app
+    args:
+      detector:
+        backend: onnx
+        model_uri: models:/roadscan-detector@production
+        confidence_threshold: 0.25
+        threads: 2
+      llm:
+        backend: llama_cpp
+        repo_id: Qwen/Qwen2.5-1.5B-Instruct-GGUF
+        filename: qwen2.5-1.5b-instruct-q4_k_m.gguf
+        revision: 91cad51170dc346986eccefdc2dd33a9da36ead9
+        threads: 2
+        max_tokens: 300
+        temperature: 0.2
+    deployments:
+      - name: Api
+        num_replicas: 1
+        ray_actor_options: { num_cpus: 0.25 }
+      - name: Detector
+        num_replicas: 1
+        ray_actor_options: { num_cpus: 0.5 }
+      - name: Describer
+        num_replicas: 1
+        # Generation takes 10-25 s on two threads; one request at a time per replica.
+        max_ongoing_requests: 1
+        ray_actor_options: { num_cpus: 1 }

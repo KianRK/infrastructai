@@ -1,0 +1,57 @@
+# Curated reference notes per damage class. These are the ONLY technical facts the language
+# model is given about causes and repairs; it is instructed not to add others.
+#
+# General pavement-engineering knowledge, consistent with standard distress catalogues
+# (e.g. FHWA "Distress Identification Manual for the Long-Term Pavement Performance
+# Program"). Kept deliberately short and qualitative: no thresholds, no measurements.
+#
+# Rules for editing:
+# - A note must not name another damage class (enforced by a test), otherwise the model
+#   would be handed words for damage that was not detected.
+# - State what is done, not what is not done. Small models tend to drop negations
+#   ("sealing is not effective" came back as "the typical repair involves sealing").
+D00:
+  appearance: >-
+    A crack that runs along the direction of travel, roughly parallel to the centre line.
+  causes: >-
+    Poorly bonded construction joints between paving lanes, shrinkage of the asphalt
+    surface as the binder ages and hardens, cracks in underlying layers reflecting through
+    the surface, and early fatigue from traffic when the crack lies in a wheel path.
+  measures: >-
+    Narrow cracks are usually cleaned and sealed to keep water out. Wide, branching or
+    wheel-path cracks indicate deeper deterioration and are typically treated by patching
+    or by milling and resurfacing the affected lane.
+D10:
+  appearance: >-
+    A crack that runs across the road, roughly perpendicular to the direction of travel.
+  causes: >-
+    Thermal contraction of the asphalt in cold weather, hardening of the binder with age,
+    and cracks or joints in underlying layers reflecting through the surface.
+  measures: >-
+    Cracks are usually cleaned and sealed to stop water entering the pavement structure.
+    Wide or heavily deteriorated cracks are repaired by patching; frequent cracking over a
+    long section is typically addressed by milling and resurfacing.
+D20:
+  appearance: >-
+    A network of interconnected cracks that divides the surface into small, many-sided
+    blocks, resembling reptile skin. It usually appears in the wheel paths.
+  causes: >-
+    Fatigue of the asphalt layer under repeated traffic loads, typically made worse by a
+    weak or water-saturated base, poor drainage, or a pavement that is too thin for the
+    traffic it carries. It is a sign of structural failure rather than a surface defect.
+  measures: >-
+    Small areas are repaired with full-depth patches after removing the failed material.
+    Large areas need structural rehabilitation or reconstruction, together with drainage
+    improvements. Left untreated, the surface breaks up and pieces come loose.
+D40:
+  appearance: >-
+    A bowl-shaped hole in the road surface where pavement material has broken away.
+  causes: >-
+    Water entering the pavement through an already weakened surface, followed by traffic
+    loosening and removing material. Freeze-thaw cycles and poor drainage accelerate the
+    process.
+  measures: >-
+    Because it is a hazard to vehicles and cyclists, repair is usually prompt: a quick
+    cold-mix fill as a temporary measure, or a durable patch where the edges are cut
+    square, the hole cleaned, filled with hot mix and compacted. Recurring holes point to
+    drainage or structural problems that need to be corrected underneath.

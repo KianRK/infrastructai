@@ -65,6 +65,7 @@ class Api:
         return AnalysisResponse(
             detections=detected.detections,
             description=described.description,
+            description_source=described.source,
             image_width=width,
             image_height=height,
             detector_version=detected.version,

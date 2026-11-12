@@ -89,8 +89,17 @@
       "type": "array"
     },
     "description": {
-      "description": "LLM-written summary grounded in the detections.",
+      "description": "Prose summary grounded in the detections.",
       "title": "Description",
+      "type": "string"
+    },
+    "description_source": {
+      "enum": [
+        "llm",
+        "template",
+        "no_damage"
+      ],
+      "title": "Description Source",
       "type": "string"
     },
     "image_width": {
@@ -115,6 +124,7 @@
   "required": [
     "detections",
     "description",
+    "description_source",
     "image_width",
     "image_height",
     "detector_version",

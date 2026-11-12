@@ -1,7 +1,9 @@
-"""Detection deployment. The backend (dummy, later ONNX Runtime) is chosen by config."""
+"""Detection deployment. The backend (dummy or ONNX Runtime) is chosen by config."""
 
 from __future__ import annotations
 
+import ast
+import logging
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -9,8 +11,12 @@ import numpy as np
 from numpy.typing import NDArray
 from ray import serve
 
+from app.model_store import resolve_model
 from app.schemas import DAMAGE_CLASS_NAMES, BoundingBox, DamageClass, Detection
-from app.settings import DetectorArgs
+from app.settings import DetectorArgs, DummyDetectorArgs, OnnxDetectorArgs
+from app.vision import letterbox, to_detections
+
+log = logging.getLogger("ray.serve")
 
 Image = NDArray[np.uint8]  # H x W x 3, RGB
 
@@ -56,10 +62,44 @@ class DummyDetectorBackend:
         ]
 
 
+class OnnxDetectorBackend:
+    """The exported detector (NMS included) on ONNX Runtime, CPU."""
+
+    def __init__(self, args: OnnxDetectorArgs) -> None:
+        import onnxruntime  # not needed for the dummy backend
+
+        model = resolve_model(args.model_uri, args.tracking_uri)
+        options = onnxruntime.SessionOptions()
+        if args.threads is not None:
+            options.intra_op_num_threads = args.threads
+        self._session = onnxruntime.InferenceSession(
+            str(model.path), options, providers=["CPUExecutionProvider"]
+        )
+        model_input = self._session.get_inputs()[0]
+        self._input_name = model_input.name
+        _, _, height, width = model_input.shape
+        if not isinstance(height, int) or height != width:
+            raise ValueError(f"expected a fixed square model input, got {model_input.shape}")
+        self._size = height
+        # Ultralytics stores the class names in the ONNX metadata as a dict literal.
+        metadata = self._session.get_modelmeta().custom_metadata_map
+        self._class_names: dict[int, str] = ast.literal_eval(metadata["names"])
+        self._threshold = args.confidence_threshold
+        self.version = model.version
+        log.info("detector %s loaded, classes %s", self.version, self._class_names)
+
+    def detect(self, image: Image) -> list[Detection]:
+        tensor, box = letterbox(image, self._size)
+        (output,) = self._session.run(None, {self._input_name: tensor})
+        return to_detections(output[0], box, self._class_names, self._threshold)
+
+
 def create_backend(args: DetectorArgs) -> DetectorBackend:
-    match args.backend:
-        case "dummy":
+    match args:
+        case DummyDetectorArgs():
             return DummyDetectorBackend()
+        case OnnxDetectorArgs():
+            return OnnxDetectorBackend(args)
 
 
 @serve.deployment

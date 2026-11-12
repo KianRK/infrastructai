@@ -7,7 +7,7 @@ export UV_NO_SYNC := 1
 # Ray workers inherit the interpreter instead of being re-launched through `uv run`.
 export RAY_ENABLE_UV_RUN_RUNTIME_ENV := 0
 
-.PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui serve-local
+.PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui serve-local serve-models
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -48,3 +48,6 @@ mlflow-ui: ## Browse local experiments and the model registry at http://localhos
 
 serve-local: ## Run the Ray Serve app with dummy models at http://localhost:8000/api/docs
 	cd serving && uv run serve run config/serve.local.yaml
+
+serve-models: ## Run the Serve app with the registered detector and the real LLM (needs `make mlflow-ui`)
+	cd serving && MLFLOW_TRACKING_URI=http://127.0.0.1:5000 uv run serve run config/serve.models.yaml

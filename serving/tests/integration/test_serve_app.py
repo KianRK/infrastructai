@@ -39,6 +39,7 @@ def test_analyze_composes_detector_and_describer(client: httpx.Client) -> None:
     # The description was produced from the detector's output, i.e. the handles are wired.
     assert "pothole" in result.description
     assert "longitudinal crack" in result.description
+    assert result.description_source == "llm"
     assert result.detector_version == "dummy"
     assert result.llm_model == "dummy"
 
@@ -50,6 +51,7 @@ def test_image_without_damage_gets_the_fixed_description(client: httpx.Client) -
     result = AnalysisResponse.model_validate(response.json())
     assert result.detections == []
     assert result.description == NO_DAMAGE_DESCRIPTION
+    assert result.description_source == "no_damage"
 
 
 def test_exif_rotated_photo_is_analysed_upright(client: httpx.Client) -> None:

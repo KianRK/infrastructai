@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -21,6 +21,11 @@ DAMAGE_CLASS_NAMES: dict[DamageClass, str] = {
     DamageClass.D20: "alligator crack",
     DamageClass.D40: "pothole",
 }
+
+
+# "llm": written by the language model. "template": deterministic fallback text (model
+# unavailable or its answer failed the grounding check). "no_damage": nothing detected.
+DescriptionSource = Literal["llm", "template", "no_damage"]
 
 
 class _Schema(BaseModel):
@@ -55,7 +60,8 @@ class Detection(_Schema):
 
 class AnalysisResponse(_Schema):
     detections: list[Detection]
-    description: str = Field(description="LLM-written summary grounded in the detections.")
+    description: str = Field(description="Prose summary grounded in the detections.")
+    description_source: DescriptionSource
     image_width: int = Field(gt=0)
     image_height: int = Field(gt=0)
     detector_version: str

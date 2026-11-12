@@ -4,7 +4,7 @@ End-to-end road damage analysis: upload a road photo, an object detector trained
 RDD2022 localises the damage, and a small self-hosted LLM describes it. Served with
 Ray Serve on Azure Kubernetes Service.
 
-> **Status: work in progress.** Milestone 4 of 12 (Ray Serve application with dummy models). The full
+> **Status: work in progress.** Milestone 5 of 12 (real detector and LLM). The full
 > README (architecture, deployment, cost, model card) is written in the final milestone.
 
 ## Repository layout
@@ -77,6 +77,23 @@ curl -F file=@road.jpg http://localhost:8000/api/analyze
 One Ray Serve application with three deployments, composed through deployment handles:
 `Api` (FastAPI ingress) -> `Detector` -> `Describer` (LLM). Backends are selected in the Serve
 config file (`serving/config/serve.*.yaml`), which also sets replicas and CPU per deployment.
+To run the real models locally, keep `make mlflow-ui` running in one terminal (it serves the
+model registry) and start `make serve-models` in another. The LLM (1.1 GB) is downloaded on
+first start.
+
+- **Detector:** the ONNX model with the registry alias `production`, run with ONNX Runtime
+  on CPU. Pre- and postprocessing (letterbox, mapping boxes back to the photo) is plain
+  NumPy; neither PyTorch nor Ultralytics is installed in the serving environment.
+- **LLM:** Qwen2.5-1.5B-Instruct (Apache-2.0), 4-bit GGUF via llama.cpp on CPU; vLLM on a
+  GPU node is selectable with `llm.backend: vllm`.
+- **Grounding:** the LLM never sees the image. It gets an aggregated summary of the
+  detections (count, confidence, share of the image, position, a heuristic severity) and the
+  curated reference notes (`serving/src/app/knowledge.yaml`) of the detected classes only.
+  Its answer is checked: if it names a damage class that was not detected, or fails, a
+  deterministic template text is returned instead (`description_source: "template"`); a
+  detected class it leaves out is appended from the reference notes. With no detections the
+  LLM is not called at all.
+
 The response schema is defined with Pydantic (`serving/src/app/schemas.py`) and committed as
 JSON Schema in `serving/contract/`; a contract test fails when the two diverge.
 
