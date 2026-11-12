@@ -77,9 +77,15 @@ After the first apply:
    ```bash
    cd training
    uv sync --extra gpu --extra azure
-   MLFLOW_TRACKING_URI="$(terraform -chdir=../infra output -raw mlflow_tracking_uri)" \
-     uv run python -m rdd.pipeline --weights runs/<run>/weights/best.pt
+   ls runs/*/weights/best.pt        # pick the run to register
+   UV_NO_SYNC=1 MLFLOW_TRACKING_URI="$(terraform -chdir=../infra output -raw mlflow_tracking_uri)" \
+     uv run python -m rdd.pipeline --weights runs/20261112-082410/weights/best.pt
    ```
+
+   `UV_NO_SYNC=1` keeps `uv run` from removing the extras again. The login is the Azure
+   CLI's. Azure ML has no MLflow model aliases, so the pipeline records the alias there
+   as the tag `alias.production` on the registered model, and the serving application
+   reads it the same way.
 
 3. **Deploy the application:** see [`deploy/README.md`](../deploy/README.md).
 4. **GitHub Actions:** the deployment workflow needs the outputs
@@ -137,10 +143,6 @@ These could not be verified without an active subscription:
   `os_disk_type = "Managed"` (a 48 GB disk per node is then billed also while stopped).
 - **Budget on a Free Trial.** Cost Management lists the Free Trial offer as supported; if
   creating the budget fails, set `budget_enabled = false`.
-- **MLflow model aliases.** Serving loads `models:/roadscan-detector@production`. Azure
-  ML's documentation lists loading by version, `latest` and stage, but does not mention
-  aliases. This is tested right after the first registration (step 2 fails at the alias
-  call if they are unsupported); the fallback is a version tag.
 - **Cluster stop/start by GitHub Actions.** The workflow identity has the
   `Azure Kubernetes Service Contributor Role`; that it covers stop and start is checked
   with the deployment workflow.

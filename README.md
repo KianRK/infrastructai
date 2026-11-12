@@ -64,6 +64,11 @@ parameters, per-epoch training metrics, test-split mAP@0.5, mAP@0.5:0.95 and per
   `production` only if the configured test metric reaches the threshold. Otherwise the command
   exits with status 2 and nothing is registered.
 - **Export:** ONNX with embedded NMS, so the serving image needs only ONNX Runtime.
+- **Azure ML registry:** its MLflow endpoint supports neither model aliases nor the
+  logged-model API of MLflow 3 (both answer 404). Against an `azureml://` tracking URI the
+  pipeline therefore uploads the model as run artifacts, creates the model version from
+  them, and stores the alias as the registered-model tag `alias.production`; the serving
+  application resolves `models:/roadscan-detector@production` through that tag.
 - **Tracking server:** a local SQLite-backed MLflow store by default. Setting
   `MLFLOW_TRACKING_URI` to an Azure ML workspace switches tracking and registry there
   (`uv sync --extra gpu --extra azure`). To register an already trained checkpoint against

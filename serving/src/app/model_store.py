@@ -6,6 +6,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 _REGISTRY_URI = re.compile(r"^models:/(?P<name>[^/@]+)(?:@(?P<alias>[^/@]+)|/(?P<version>\d+))$")
 
@@ -46,6 +47,21 @@ def _downloaded_version(path: Path) -> str | None:
     return f"{name} v{version}" if name and version else None
 
 
+def resolve_alias(client: Any, name: str, alias: str, tracking_uri: str) -> str:
+    """Version an alias points to.
+
+    Azure ML has no model aliases (its MLflow endpoint answers 404). There the training
+    pipeline records the alias as the registered-model tag ``alias.<alias>`` holding the
+    version number.
+    """
+    if not tracking_uri.startswith("azureml://"):
+        return str(client.get_model_version_by_alias(name, alias).version)
+    version = client.get_registered_model(name).tags.get(f"alias.{alias}")
+    if not version:
+        raise LookupError(f"registered model {name!r} has no tag 'alias.{alias}'")
+    return str(version)
+
+
 def resolve_model(model_uri: str, tracking_uri: str | None = None) -> ResolvedModel:
     if not model_uri.startswith("models:/"):
         path = Path(model_uri)
@@ -66,8 +82,7 @@ def resolve_model(model_uri: str, tracking_uri: str | None = None) -> ResolvedMo
 
     version = ref.version
     if ref.alias is not None:
-        client = MlflowClient()
-        version = str(client.get_model_version_by_alias(ref.name, ref.alias).version)
+        version = resolve_alias(MlflowClient(), ref.name, ref.alias, tracking_uri)
     # Download the resolved version, so the reported version is the one that is served
     # even if the alias moves while this replica starts.
     local_dir = Path(mlflow.artifacts.download_artifacts(f"models:/{ref.name}/{version}"))
