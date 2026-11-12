@@ -98,7 +98,11 @@ After the first apply:
 3. **Deploy the application:** see [`deploy/README.md`](../deploy/README.md).
 4. **GitHub Actions:** `make github-setup` stores what the CD and Demo workflows need as
    repository secrets (identifiers and Helm values taken from the outputs; no credential).
-   Run it again whenever an output changed.
+   Run it again whenever an output changed. The workflows log in with a federated
+   credential whose subject must equal the one GitHub issues; for another repository set
+   `github_subject_prefix` to the value of
+   `gh api repos/<owner>/<name>/actions/oidc/customization/sub --jq .sub_claim_prefix`
+   (a mismatch shows as `AADSTS700213` in the login step).
 
 ## Cost
 

@@ -102,16 +102,26 @@ variable "kubernetes_version" {
 
 # --- Access ----------------------------------------------------------------------------
 
-variable "github_repository" {
-  description = "GitHub repository (owner/name) whose workflows may deploy."
+variable "github_subject_prefix" {
+  description = <<-EOT
+    First part of the OIDC subject GitHub issues to the repository's workflows. GitHub
+    reports it: gh api repos/<owner>/<name>/actions/oidc/customization/sub --jq .sub_claim_prefix
+    Repositories with immutable subjects get "repo:<owner>@<owner id>/<name>@<repository id>",
+    older ones "repo:<owner>/<name>".
+  EOT
   type        = string
-  default     = "KianRK/infrastructai"
+  default     = "repo:KianRK@101524407/infrastructai@1454543143"
+
+  validation {
+    condition     = startswith(var.github_subject_prefix, "repo:")
+    error_message = "The prefix must start with \"repo:\"."
+  }
 }
 
 variable "github_subjects" {
   description = <<-EOT
     Which workflow runs of the repository may log in to Azure, as the part of the OIDC
-    subject after "repo:<owner>/<name>:". Keys are used in resource names.
+    subject after the prefix and a colon. Keys are used in resource names.
   EOT
   type        = map(string)
   default = {
