@@ -13,7 +13,7 @@ model:
 train:
   epochs: 100
   imgsz: 640
-  batch: 16
+  batch: 20
   amp: true        # mixed precision: roughly halves VRAM use
   workers: 8
   patience: 20     # early stopping: epochs without validation improvement
