@@ -4,7 +4,7 @@ End-to-end road damage analysis: upload a road photo, an object detector trained
 RDD2022 localises the damage, and a small self-hosted LLM describes it. Served with
 Ray Serve on Azure Kubernetes Service.
 
-> **Status: work in progress.** Milestone 6 of 12 (React frontend). The full
+> **Status: work in progress.** Milestone 7 of 12 (authentication, rate limiting, upload validation). The full
 > README (architecture, deployment, cost, model card) is written in the final milestone.
 
 ## Repository layout
@@ -100,13 +100,32 @@ JSON Schema in `serving/contract/`; a contract test fails when the two diverge.
 ## Frontend
 
 ```bash
-cd frontend && npm run dev   # http://localhost:5173, proxies /api to the Serve app on :8000
+make serve-local    # terminal 1: backend with dummy models
+make frontend-dev   # terminal 2: http://localhost:5173, password "roadscan-dev"
 ```
 
 React + TypeScript + Vite. Login screen, image upload with client-side validation (JPEG, PNG,
 WebP; 10 MB), the photo with bounding boxes and labels, the written assessment with its
 source (language model or template), and loading, error and session-expired states. Boxes use
 the API's relative coordinates, so they stay aligned at any display size.
+
+## Security
+
+- **Login:** one demo password, compared in constant time. A successful login sets a signed
+  session token (JWT, HS256, 60 minutes) in a cookie that is `HttpOnly`, `Secure`,
+  `SameSite=Strict` and limited to `/api`. `SameSite=Strict` is the CSRF protection.
+- **Secrets:** the password and the signing key are read from files mounted from Azure Key
+  Vault (`auth.secrets_dir`), or from `ROADSCAN_DEMO_PASSWORD` / `ROADSCAN_JWT_SECRET` for
+  local runs. The API refuses to start without them. Nothing secret is in the repository
+  or in an image; the `roadscan-dev` password in the Makefile only exists for local runs.
+- **Rate limiting in the application:** login attempts per client address (10 per 5 min),
+  analyses per session (6 per min) and per client address (20 per min); `429` with
+  `Retry-After`. The client address is taken from `X-Forwarded-For` only as far as our own
+  proxies wrote it. A second, coarser limit is enforced at the gateway (Kubernetes
+  milestone).
+- **Uploads:** 10 MB limit; file type decided by content (JPEG, PNG, WebP), not by name or
+  declared type; pixel count checked from the header before decoding (decompression
+  bombs); large photos are decoded at reduced size.
 
 ## License
 

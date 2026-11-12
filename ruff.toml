@@ -7,4 +7,5 @@ src = ["training/src", "serving/src"]
 select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4", "PTH", "RUF", "S", "N"]
 
 [lint.per-file-ignores]
-"**/tests/**" = ["S101"] # assert is the point of a test
+# assert is the point of a test; passwords and keys in tests are fixtures, not secrets
+"**/tests/**" = ["S101", "S105", "S106"]

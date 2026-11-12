@@ -1524,6 +1524,7 @@ dependencies = [
     { name = "onnxruntime" },
     { name = "pillow" },
     { name = "pydantic" },
+    { name = "pyjwt" },
     { name = "python-multipart" },
     { name = "ray", extra = ["serve"] },
 ]
@@ -1554,6 +1555,7 @@ requires-dist = [
     { name = "onnxruntime", specifier = ">=1.31,<2" },
     { name = "pillow", specifier = ">=11,<13" },
     { name = "pydantic", specifier = ">=2.9,<3" },
+    { name = "pyjwt", specifier = ">=2.10,<3" },
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "ray", extras = ["serve"], specifier = ">=2.59,<2.60" },
 ]

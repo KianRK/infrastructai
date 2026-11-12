@@ -15,6 +15,10 @@ applications:
         backend: dummy
       llm:
         backend: dummy
+      auth:
+        # Local runs use plain HTTP; secrets come from ROADSCAN_DEMO_PASSWORD and
+        # ROADSCAN_JWT_SECRET (the Makefile sets development values).
+        cookie_secure: false
     deployments:
       - name: Api
         num_replicas: 1

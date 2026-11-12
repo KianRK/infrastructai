@@ -68,8 +68,15 @@ def test_exif_rotated_photo_is_analysed_upright(client: httpx.Client) -> None:
 
 def test_non_image_upload_is_rejected(client: httpx.Client) -> None:
     response = analyze(client, b"%PDF-1.7 this is not an image", "report.png")
-    assert response.status_code == 400
-    assert response.json() == {"detail": "file is not a readable image"}
+    assert response.status_code == 415
+    assert response.json() == {"detail": "only JPEG, PNG and WebP images are supported"}
+
+
+def test_oversized_upload_is_rejected(client: httpx.Client) -> None:
+    # Valid PNG signature followed by 10 MB + 1 byte: must fail on size, not on content.
+    data = b"\x89PNG\r\n\x1a\n" + bytes(10 * 1024 * 1024)
+    response = analyze(client, data, "huge.png")
+    assert response.status_code == 413
 
 
 def test_truncated_image_is_rejected(client: httpx.Client) -> None:

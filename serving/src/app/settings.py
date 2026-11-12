@@ -66,7 +66,41 @@ class VllmArgs(_GenerationArgs):
 LLMArgs = Annotated[DummyLLMArgs | LlamaCppArgs | VllmArgs, Field(discriminator="backend")]
 
 
+class RateLimit(_Args):
+    """At most ``limit`` requests per ``window_seconds`` for one key."""
+
+    limit: int = Field(ge=1)
+    window_seconds: float = Field(gt=0)
+
+
+class AuthArgs(_Args):
+    """Session and rate-limit settings. The secrets themselves are never in a config file:
+    they are read from ``secrets_dir`` (files ``demo-password`` and ``jwt-secret``, mounted
+    from Azure Key Vault) or, for local runs, from the environment variables
+    ROADSCAN_DEMO_PASSWORD and ROADSCAN_JWT_SECRET."""
+
+    secrets_dir: Path | None = None
+    session_minutes: int = Field(default=60, ge=1)
+    # False only for local HTTP; browsers do not send Secure cookies over plain HTTP.
+    cookie_secure: bool = True
+    # Number of trusted reverse proxies in front of the app that append the client address
+    # to X-Forwarded-For. 0: use the TCP peer address and ignore the header.
+    trusted_proxy_hops: int = Field(default=0, ge=0)
+    login_limit: RateLimit = RateLimit(limit=10, window_seconds=300)  # per client address
+    analyze_session_limit: RateLimit = RateLimit(limit=6, window_seconds=60)
+    analyze_client_limit: RateLimit = RateLimit(limit=20, window_seconds=60)
+
+
+class UploadArgs(_Args):
+    max_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
+    # Checked from the image header before any pixel is decoded (decompression bombs).
+    max_pixels: int = Field(default=50_000_000, gt=0)
+    # Larger images are downscaled right after decoding; the detector works at 640 px.
+    max_side: int = Field(default=1600, ge=320)
+
+
 class AppArgs(_Args):
     detector: DetectorArgs = Field(default_factory=DummyDetectorArgs)
     llm: LLMArgs = Field(default_factory=DummyLLMArgs)
-    max_image_pixels: int = Field(default=40_000_000, gt=0)
+    auth: AuthArgs = Field(default_factory=AuthArgs)
+    upload: UploadArgs = Field(default_factory=UploadArgs)
