@@ -14,7 +14,7 @@ image:
   frontend:
     repository: roadscan-frontend
 
-# Public DNS name, e.g. roadscan-ab1cd.westeurope.cloudapp.azure.com. Required with TLS.
+# Public DNS name, e.g. roadscan-ab1cd.swedencentral.cloudapp.azure.com. Required with TLS.
 # Empty: the gateway answers for any host name (local clusters).
 host: ""
 

@@ -4,9 +4,9 @@ variable "subscription_id" {
 }
 
 variable "location" {
-  description = "Azure region. Check VM quota there first (see README.md)."
+  description = "Azure region. Check VM quota there first (see README.md). West Europe is closed to new customers."
   type        = string
-  default     = "westeurope"
+  default     = "swedencentral"
 }
 
 variable "name" {

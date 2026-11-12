@@ -1,6 +1,6 @@
 # Copy to terraform.tfvars (ignored by git) and fill in.
 subscription_id       = "00000000-0000-0000-0000-000000000000"
-location              = "westeurope"
+location              = "swedencentral"
 sizing_profile        = "free" # "standard" needs a pay-as-you-go subscription
 budget_amount         = 30
 budget_contact_emails = ["you@example.com"]

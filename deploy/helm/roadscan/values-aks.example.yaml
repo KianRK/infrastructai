@@ -4,7 +4,7 @@ image:
   registry: acrroadscanab1cd.azurecr.io # acr_login_server
   tag: "<git commit sha>"
 
-host: roadscan-ab1cd.westeurope.cloudapp.azure.com # hostname
+host: roadscan-ab1cd.swedencentral.cloudapp.azure.com # hostname
 
 gateway:
   azure:
@@ -20,7 +20,7 @@ serviceAccount:
   workloadIdentityClientId: 00000000-0000-0000-0000-000000000000 # serving_identity_client_id
 
 serve:
-  mlflowTrackingUri: azureml://westeurope.api.azureml.ms/mlflow/v1.0/subscriptions/... # mlflow_tracking_uri
+  mlflowTrackingUri: azureml://swedencentral.api.azureml.ms/mlflow/v1.0/subscriptions/... # mlflow_tracking_uri
 
 ray:
   head:

@@ -44,8 +44,8 @@ az provider register --namespace Microsoft.Compute --wait
 
 # Is there quota for 4 vCPUs in the region and in the VM family, and is the size offered
 # to this subscription (Restrictions = None)?
-az vm list-usage --location westeurope -o table | grep -E 'Total Regional|Ddsv7'
-az vm list-skus --location westeurope --size Standard_D2ds_v7 --all -o table
+az vm list-usage --location swedencentral -o table | grep -E 'Total Regional|Ddsv7'
+az vm list-skus --location swedencentral --size Standard_D2ds_v7 --all -o table
 ```
 
 If the size is restricted or the quota is short, choose another region (`location`) or
@@ -125,9 +125,13 @@ free again.
 
 These could not be verified without an active subscription:
 
-- **Free Trial limits.** Checked on a Free Trial subscription in `westeurope` (2026-11):
-  4 vCPUs per region, `Standard_D2s_v3` not offered, `Standard_D2ds_v7` offered. Other
-  regions and dates may differ; the commands under Prerequisites show the real values.
+- **Free Trial limits.** Checked on a Free Trial subscription (2026-11): 4 vCPUs per
+  region; `Standard_D2ds_v7` is offered in `swedencentral`, `Standard_D2s_v3` is not
+  offered in `westeurope`. Other regions and dates may differ; the commands under
+  Prerequisites show the real values.
+- **Region.** `westeurope` does not accept customers who are new to the region
+  (`RequestDisallowedByAzure ... not accepting new customers`,
+  [details](https://aka.ms/locationineligible)); hence the default `swedencentral`.
 - **Ephemeral OS disk on NVMe.** `Standard_D2ds_v7` has no cache disk; its ephemeral OS
   disk is placed on the local NVMe disk. If AKS rejects that, set
   `os_disk_type = "Managed"` (a 48 GB disk per node is then billed also while stopped).
