@@ -4,7 +4,7 @@ End-to-end road damage analysis: upload a road photo, an object detector trained
 RDD2022 localises the damage, and a small self-hosted LLM describes it. Served with
 Ray Serve on Azure Kubernetes Service.
 
-> **Status: work in progress.** Milestone 8 of 12 (authentication, rate limiting, upload validation). The full
+> **Status: work in progress.** Milestone 9 of 12 (Terraform for Azure; not yet applied to a subscription). The full
 > README (architecture, deployment, cost, model card) is written in the final milestone.
 
 ## Repository layout
@@ -14,6 +14,7 @@ Ray Serve on Azure Kubernetes Service.
 | `training/` | RDD2022 data pipeline and detector training (Python package `rdd`) |
 | `serving/` | Ray Serve application: API, detector, LLM (Python package `app`) |
 | `frontend/` | React + TypeScript + Vite web interface |
+| `infra/` | Terraform for Azure: AKS, registry, ML workspace, Key Vault, identities, budget ([details](infra/README.md)) |
 | `.github/workflows/` | CI (lint, type-check, tests, build) |
 
 ## Development

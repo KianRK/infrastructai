@@ -10,8 +10,10 @@ export RAY_ENABLE_UV_RUN_RUNTIME_ENV := 0
 # reads its secrets from Azure Key Vault instead.
 export ROADSCAN_DEMO_PASSWORD ?= roadscan-dev
 export ROADSCAN_JWT_SECRET ?= local-development-signing-key-not-for-production
+# Terraform binary (1.17 or newer).
+TERRAFORM ?= terraform
 
-.PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui serve-local serve-models frontend-dev docker-build compose-up compose-up-models compose-down model-fetch smoke-test
+.PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui serve-local serve-models frontend-dev docker-build compose-up compose-up-models compose-down model-fetch smoke-test infra-check infra-plan infra-apply
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -88,3 +90,15 @@ compose-down: ## Stop the containers
 
 smoke-test: ## Check a running stack end to end (URL=http://localhost:8080)
 	python3 scripts/smoke_test.py $(or $(URL),http://localhost:8080)
+
+infra-check: ## Format-check and validate the Terraform configuration (no Azure login needed)
+	$(TERRAFORM) -chdir=infra fmt -check -recursive
+	$(TERRAFORM) -chdir=infra init -backend=false -input=false
+	$(TERRAFORM) -chdir=infra validate
+
+infra-plan: ## Plan the Azure infrastructure (needs `az login` and infra/terraform.tfvars)
+	$(TERRAFORM) -chdir=infra init -input=false
+	$(TERRAFORM) -chdir=infra plan -out tfplan
+
+infra-apply: ## Apply the plan made by infra-plan (creates billable resources)
+	$(TERRAFORM) -chdir=infra apply tfplan

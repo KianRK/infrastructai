@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars (ignored by git) and fill in.
+subscription_id       = "00000000-0000-0000-0000-000000000000"
+location              = "westeurope"
+sizing_profile        = "free" # "standard" needs a pay-as-you-go subscription
+budget_amount         = 30
+budget_contact_emails = ["you@example.com"]
+
+# A Free Trial subscription may not support budgets; if `terraform apply` fails on the
+# budget, set:
+# budget_enabled = false
