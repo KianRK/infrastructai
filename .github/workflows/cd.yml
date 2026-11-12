@@ -1,0 +1,127 @@
+name: CD
+
+# After CI passed on main: build both images, push them to the Azure registry and, if the
+# demo cluster is running, deploy them and run the smoke test. The cluster is usually
+# stopped (see the Demo workflow); the images are then deployed with the next start.
+#
+# Azure login uses GitHub's OIDC token and a federated credential on a managed identity:
+# no client secret or registry password exists. The four repository secrets hold
+# identifiers and configuration, kept out of the public logs; `make github-setup` writes them.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # OIDC token for the Azure login
+
+env:
+  RESOURCE_GROUP: rg-roadscan
+  CLUSTER: aks-roadscan
+
+jobs:
+  # Skip quietly where the Azure secrets are not set (forks, or before `make github-setup`).
+  config:
+    name: Azure configured?
+    runs-on: ubuntu-24.04
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        run: |
+          if [ -n "$CLIENT_ID" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"; else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Azure secrets are not set; nothing was done. See \`make github-setup\`." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  images:
+    name: Build and push images
+    needs: config
+    if: >-
+      needs.config.outputs.ready == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Image tag and registry
+        id: meta
+        env:
+          HELM_VALUES: ${{ secrets.AKS_HELM_VALUES }}
+        run: |
+          echo "tag=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "registry=$(jq -r .image.registry <<< "$HELM_VALUES")" >> "$GITHUB_OUTPUT"
+      - uses: azure/login@v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Registry login
+        run: az acr login --name "${REGISTRY%%.*}"
+        env:
+          REGISTRY: ${{ steps.meta.outputs.registry }}
+      - uses: docker/setup-buildx-action@v4.4.1
+      # The layer cache lives in the registry, so the 1.1 GB LLM weights and the Python
+      # dependencies are rebuilt only when they change.
+      - name: Serving image
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: serving
+          push: true
+          tags: ${{ steps.meta.outputs.registry }}/roadscan-serving:${{ steps.meta.outputs.tag }}
+          cache-from: type=registry,ref=${{ steps.meta.outputs.registry }}/roadscan-serving:buildcache
+          cache-to: type=registry,ref=${{ steps.meta.outputs.registry }}/roadscan-serving:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+          provenance: false
+      - name: Frontend image
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: frontend
+          push: true
+          tags: ${{ steps.meta.outputs.registry }}/roadscan-frontend:${{ steps.meta.outputs.tag }}
+          cache-from: type=registry,ref=${{ steps.meta.outputs.registry }}/roadscan-frontend:buildcache
+          cache-to: type=registry,ref=${{ steps.meta.outputs.registry }}/roadscan-frontend:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+          provenance: false
+
+  deploy:
+    name: Deploy and smoke test
+    needs: images
+    runs-on: ubuntu-24.04
+    # One job at a time may deploy to, start or stop the cluster, across both workflows.
+    concurrency:
+      group: aks-roadscan
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: azure/login@v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Is the demo cluster running?
+        id: cluster
+        run: |
+          state="$(az aks show --resource-group "$RESOURCE_GROUP" --name "$CLUSTER" --query powerState.code -o tsv)"
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          if [ "$state" != "Running" ]; then
+            echo "The demo cluster is $state: images were pushed, nothing was deployed. The next start of the Demo workflow deploys the newest image." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Deploy
+        if: steps.cluster.outputs.state == 'Running'
+        uses: ./.github/actions/deploy
+        with:
+          tag: ${{ needs.images.outputs.tag }}
+          helm-values: ${{ secrets.AKS_HELM_VALUES }}
+          resource-group: ${{ env.RESOURCE_GROUP }}
+          cluster: ${{ env.CLUSTER }}

@@ -4,7 +4,7 @@ End-to-end road damage analysis: upload a road photo, an object detector trained
 RDD2022 localises the damage, and a small self-hosted LLM describes it. Served with
 Ray Serve on Azure Kubernetes Service.
 
-> **Status: work in progress.** Milestone 10 of 12 (Terraform and Helm chart written and tested locally; not yet deployed to Azure). The full
+> **Status: work in progress.** Milestone 11 of 12 (deployed on AKS; CD pipeline and on-demand start/stop). The full
 > README (architecture, deployment, cost, model card) is written in the final milestone.
 
 ## Repository layout
@@ -17,7 +17,7 @@ Ray Serve on Azure Kubernetes Service.
 | `infra/` | Terraform for Azure: AKS, registry, ML workspace, Key Vault, identities, budget ([details](infra/README.md)) |
 | `deploy/` | Helm chart, cluster components, compose gateway ([details](deploy/README.md)) |
 | `scripts/` | Deployment and smoke-test scripts |
-| `.github/workflows/` | CI (lint, type-check, tests, build, Terraform and Helm checks) |
+| `.github/workflows/` | CI (lint, type-check, tests, build, Terraform and Helm checks), CD (images, deployment, smoke test), Demo (start, stop, automatic stop) |
 
 ## Development
 

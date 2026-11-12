@@ -88,9 +88,9 @@ After the first apply:
    reads it the same way.
 
 3. **Deploy the application:** see [`deploy/README.md`](../deploy/README.md).
-4. **GitHub Actions:** the deployment workflow needs the outputs
-   `github_identity_client_id`, `tenant_id` and `subscription_id` as repository variables
-   (they are identifiers, not secrets).
+4. **GitHub Actions:** `make github-setup` stores what the CD and Demo workflows need as
+   repository secrets (identifiers and Helm values taken from the outputs; no credential).
+   Run it again whenever an output changed.
 
 ## Cost
 

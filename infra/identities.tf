@@ -76,6 +76,14 @@ resource "azurerm_role_assignment" "github_deploys_app" {
   principal_type       = "ServicePrincipal"
 }
 
+# Read the demo password for the post-deployment smoke test: this one secret only.
+resource "azurerm_role_assignment" "github_reads_demo_password" {
+  scope                = azurerm_key_vault_secret.demo_password.resource_versionless_id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.github.principal_id
+  principal_type       = "ServicePrincipal"
+}
+
 # --- The person running Terraform ---------------------------------------------------------
 
 resource "azurerm_role_assignment" "operator_administers_cluster" {

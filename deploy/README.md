@@ -100,6 +100,41 @@ gateway has its public address, usually within two minutes after that.
 
 `values-aks.example.yaml` shows the values `make deploy` derives from Terraform.
 
+## Continuous deployment and the on-demand demo
+
+Two GitHub workflows act on the cluster. Both log in to Azure with GitHub's OIDC token and
+a federated credential on a managed identity; there is no client secret, registry password
+or kubeconfig in GitHub. `make github-setup` writes the four repository secrets they read
+(three identifiers and the Helm values; none is a credential, but the logs of a public
+repository are public). Without them the workflows do nothing, e.g. in forks.
+
+| Workflow | Trigger | What it does |
+| --- | --- | --- |
+| `CD` | CI passed on `main` (or manually) | Builds both images with a layer cache in the registry, pushes them tagged with the commit, and, if the cluster is running, upgrades the Helm release and runs the smoke test against the public URL. If the cluster is stopped, only the images are pushed. |
+| `Demo` → start | manually ("Run workflow", hours 1–12) | Starts the cluster, records the time of the automatic stop, deploys the newest image in the registry, runs the smoke test. |
+| `Demo` → stop | manually | Stops the cluster. |
+| `Demo` (schedule) | every 30 minutes | Stops the cluster once the recorded time has passed. |
+
+The same from a terminal, with your own Azure login:
+
+```bash
+make demo-up            # HOURS=2 by default
+make demo-status
+make demo-down
+```
+
+- **What the pipeline identity may do:** push images, operate the cluster resource (start,
+  stop, credentials), everything inside the `roadscan` namespace and nothing outside it,
+  and read the one Key Vault secret `demo-password` for the smoke test. It cannot read the
+  signing key and has no rights on the other Azure resources.
+- **Automatic stop.** The stop time is the cluster's Azure tag `demo-stop-at`. A running
+  cluster without a valid tag counts as overdue, so one started with `az aks start` or by
+  `terraform apply` is stopped by the next check as well; use `make demo-up` to keep it
+  up. GitHub can delay scheduled runs and pauses them after 60 days without repository
+  activity; the budget alert remains as a second safeguard.
+- **After a stop** Azure needs 15–30 minutes before the cluster can be started again.
+- **Deployments are serialised:** deploy, start and stop jobs share one concurrency group.
+
 ## Verified, and not
 
 Verified on a local minikube cluster (Kubernetes 1.35) with Envoy Gateway 1.10.0,
@@ -109,13 +144,9 @@ gateway (11 checks), `413` for a 12 MB upload, `429` after the rate limit, repea
 `restricted` Pod Security Standard. Memory was measured with the real models in the docker
 compose stack.
 
-Not verified, because they need the AKS cluster:
-
-- the Key Vault mount and workload identity, including the model download from Azure ML
-  (the MLflow plugin uses `DefaultAzureCredential`, which supports workload identity);
-- the static public IP on the load balancer, Let's Encrypt issuance (including whether
-  cert-manager's challenge pod is admitted by the `restricted` namespace), the HTTPS
-  listener and the redirect;
-- that the pods fit next to the system pods on one 2-vCPU / 8 GB node;
-- network policy enforcement (minikube's default network plugin ignores policies);
-- that the deployment pipeline's namespace-scoped role is sufficient for `make deploy`.
+Verified on AKS (Kubernetes 1.36, `free` profile, Sweden Central): the certificate was
+issued within three minutes of the first deployment, HTTP redirects to HTTPS, and the
+smoke test passes over HTTPS, which covers the Key Vault mount, the workload identity and
+the model download from Azure ML. Both application pods fit on the one 2-vCPU / 8 GB
+node. From a pod in another namespace, connections to the frontend and to Ray Serve time
+out, so the network policies are enforced.

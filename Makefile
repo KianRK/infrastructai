@@ -16,8 +16,10 @@ TERRAFORM ?= terraform
 # Image tag for the cluster: the commit, so every deployment is traceable.
 TAG ?= $(shell git rev-parse --short=12 HEAD)
 CHART := deploy/helm/roadscan
+# Hours until a demo started with `make demo-up` is stopped automatically.
+HOURS ?= 2
 
-.PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui serve-local serve-models frontend-dev docker-build compose-up compose-up-models compose-down model-fetch smoke-test infra-check infra-plan infra-apply chart-check platform-install deploy-local aks-credentials images-push deploy
+.PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui serve-local serve-models frontend-dev docker-build compose-up compose-up-models compose-down model-fetch smoke-test infra-check infra-plan infra-apply chart-check platform-install deploy-local aks-credentials images-push deploy demo-up demo-down demo-status github-setup
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-17s %s\n", $$1, $$2}'
@@ -134,3 +136,20 @@ images-push: ## Build the serving and frontend images and push them to the Azure
 deploy: ## Deploy the pushed images to AKS with values from the Terraform outputs (TAG=commit)
 	set -o pipefail; $(TERRAFORM) -chdir=infra output -json | python3 scripts/aks_values.py \
 		| scripts/deploy.sh -f - --set image.tag=$(TAG)
+
+demo-up: ## Start the demo cluster, deploy the newest pushed image, smoke test (HOURS=2 until auto-stop)
+	scripts/demo.sh up $(HOURS)
+	$(MAKE) aks-credentials
+	$(MAKE) deploy TAG="$$(scripts/demo.sh latest-tag "$$($(TERRAFORM) -chdir=infra output -raw acr_login_server)")"
+	ROADSCAN_DEMO_PASSWORD="$$($(TERRAFORM) -chdir=infra output -raw demo_password_command | sh)" \
+		python3 scripts/smoke_test.py "https://$$($(TERRAFORM) -chdir=infra output -raw hostname)"
+	@echo "Demo: https://$$($(TERRAFORM) -chdir=infra output -raw hostname)"
+
+demo-down: ## Stop the demo cluster (no compute cost while stopped)
+	scripts/demo.sh down
+
+demo-status: ## Show whether the demo cluster runs and when it stops
+	scripts/demo.sh status
+
+github-setup: ## Write the repository secrets for the CD and Demo workflows from the Terraform outputs
+	scripts/github_setup.sh

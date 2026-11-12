@@ -1,0 +1,59 @@
+name: Deploy to AKS
+description: >
+  Upgrades the Helm release on the running AKS cluster and runs the smoke test against the
+  public URL. Expects the repository to be checked out and an Azure login (azure/login).
+
+inputs:
+  tag:
+    description: Image tag to deploy.
+    required: true
+  helm-values:
+    description: Helm values as JSON (the AKS_HELM_VALUES secret).
+    required: true
+  resource-group:
+    description: Resource group of the cluster.
+    required: true
+  cluster:
+    description: Name of the AKS cluster.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: azure/setup-helm@v5.1.0
+      with:
+        version: v4.3.1
+    - uses: azure/use-kubelogin@v1.3
+      with:
+        kubelogin-version: latest
+    - name: Cluster credentials
+      shell: bash
+      env:
+        RESOURCE_GROUP: ${{ inputs.resource-group }}
+        CLUSTER: ${{ inputs.cluster }}
+      run: |
+        az aks get-credentials --resource-group "$RESOURCE_GROUP" --name "$CLUSTER" --overwrite-existing
+        # The cluster accepts Entra ID tokens only; reuse the Azure CLI's OIDC login.
+        kubelogin convert-kubeconfig -l azurecli
+    - name: Helm upgrade
+      shell: bash
+      env:
+        HELM_VALUES: ${{ inputs.helm-values }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        values="$RUNNER_TEMP/values.json"
+        printf '%s' "$HELM_VALUES" > "$values"
+        scripts/deploy.sh -f "$values" --set "image.tag=$TAG"
+    - name: Smoke test against the public URL
+      shell: bash
+      env:
+        HELM_VALUES: ${{ inputs.helm-values }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        host="$(jq -r .host <<< "$HELM_VALUES")"
+        vault="$(jq -r .secrets.keyVault.name <<< "$HELM_VALUES")"
+        # Read at run time with the workflow's identity; not stored in GitHub.
+        password="$(az keyvault secret show --vault-name "$vault" --name demo-password --query value -o tsv)"
+        echo "::add-mask::$password"
+        ROADSCAN_DEMO_PASSWORD="$password" python3 scripts/smoke_test.py "https://$host"
+        echo "Deployed \`$TAG\` to https://$host" >> "$GITHUB_STEP_SUMMARY"

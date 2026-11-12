@@ -1,0 +1,111 @@
+name: Demo
+
+# The demo cluster runs on demand. Start it here ("Run workflow") or with `make demo-up`;
+# it is stopped again by "stop", by `make demo-down`, or automatically by the half-hourly
+# check once the requested number of hours has passed. A stopped cluster is not billed for
+# its control plane or nodes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Start or stop the demo
+        type: choice
+        options: [start, stop]
+        default: start
+      hours:
+        description: "start: stop automatically after this many hours (1-12)"
+        default: "2"
+  schedule:
+    # Automatic stop. GitHub may delay scheduled runs, and pauses them after 60 days
+    # without repository activity; the Azure budget alert is the second line of defence.
+    - cron: "7,37 * * * *"
+
+permissions:
+  contents: read
+  id-token: write # OIDC token for the Azure login
+
+env:
+  RESOURCE_GROUP: rg-roadscan
+  CLUSTER: aks-roadscan
+
+jobs:
+  # Skip quietly where the Azure secrets are not set (forks, or before `make github-setup`).
+  config:
+    name: Azure configured?
+    runs-on: ubuntu-24.04
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        run: |
+          if [ -n "$CLIENT_ID" ]; then echo "ready=true" >> "$GITHUB_OUTPUT"; else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Azure secrets are not set; nothing was done. See \`make github-setup\`." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  start:
+    name: Start, deploy the newest image, smoke test
+    needs: config
+    if: needs.config.outputs.ready == 'true' && github.event_name == 'workflow_dispatch' && inputs.action == 'start'
+    runs-on: ubuntu-24.04
+    # One job at a time may deploy to, start or stop the cluster, across both workflows.
+    concurrency:
+      group: aks-roadscan
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/login@v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Start the cluster and schedule its stop
+        env:
+          HOURS: ${{ inputs.hours }}
+        run: scripts/demo.sh up "$HOURS"
+      - name: Newest image in the registry
+        id: image
+        env:
+          HELM_VALUES: ${{ secrets.AKS_HELM_VALUES }}
+        run: echo "tag=$(scripts/demo.sh latest-tag "$(jq -r .image.registry <<< "$HELM_VALUES")")" >> "$GITHUB_OUTPUT"
+      - name: Deploy
+        uses: ./.github/actions/deploy
+        with:
+          tag: ${{ steps.image.outputs.tag }}
+          helm-values: ${{ secrets.AKS_HELM_VALUES }}
+          resource-group: ${{ env.RESOURCE_GROUP }}
+          cluster: ${{ env.CLUSTER }}
+
+  stop:
+    name: Stop
+    needs: config
+    if: needs.config.outputs.ready == 'true' && github.event_name == 'workflow_dispatch' && inputs.action == 'stop'
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: aks-roadscan
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/login@v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: scripts/demo.sh down
+
+  auto-stop:
+    name: Stop when the scheduled time has passed
+    needs: config
+    if: needs.config.outputs.ready == 'true' && github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/login@v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - run: scripts/demo.sh auto-stop

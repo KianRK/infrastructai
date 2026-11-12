@@ -59,6 +59,11 @@ resource "azurerm_kubernetes_cluster" "main" {
     network_data_plane  = "cilium" # enforces Kubernetes network policies
     load_balancer_sku   = "standard"
   }
+
+  lifecycle {
+    # Written by scripts/demo.sh: when the running demo is stopped automatically.
+    ignore_changes = [tags["demo-stop-at"]]
+  }
 }
 
 # CPU pool: Ray head and workers (detector, LLM), frontend.
