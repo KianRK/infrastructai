@@ -4,7 +4,7 @@ End-to-end road damage analysis: upload a road photo, an object detector trained
 RDD2022 localises the damage, and a small self-hosted LLM describes it. Served with
 Ray Serve on Azure Kubernetes Service.
 
-> **Status: work in progress.** Milestone 5 of 12 (real detector and LLM). The full
+> **Status: work in progress.** Milestone 6 of 12 (React frontend). The full
 > README (architecture, deployment, cost, model card) is written in the final milestone.
 
 ## Repository layout
@@ -96,6 +96,17 @@ first start.
 
 The response schema is defined with Pydantic (`serving/src/app/schemas.py`) and committed as
 JSON Schema in `serving/contract/`; a contract test fails when the two diverge.
+
+## Frontend
+
+```bash
+cd frontend && npm run dev   # http://localhost:5173, proxies /api to the Serve app on :8000
+```
+
+React + TypeScript + Vite. Login screen, image upload with client-side validation (JPEG, PNG,
+WebP; 10 MB), the photo with bounding boxes and labels, the written assessment with its
+source (language model or template), and loading, error and session-expired states. Boxes use
+the API's relative coordinates, so they stay aligned at any display size.
 
 ## License
 
