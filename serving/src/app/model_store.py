@@ -32,12 +32,26 @@ def parse_registry_uri(uri: str) -> RegistryRef:
     return RegistryRef(match["name"], match["alias"], match["version"])
 
 
+def _downloaded_version(path: Path) -> str | None:
+    """Name and version of a model copied out of the registry (`make model-fetch`).
+
+    MLflow writes them to a ``registered_model_meta`` file next to the model.
+    """
+    meta = path.with_name("registered_model_meta")
+    if not meta.is_file():
+        return None
+    lines = (line.partition(":") for line in meta.read_text().splitlines())
+    fields = {key.strip(): value.strip() for key, _, value in lines}
+    name, version = fields.get("model_name"), fields.get("model_version")
+    return f"{name} v{version}" if name and version else None
+
+
 def resolve_model(model_uri: str, tracking_uri: str | None = None) -> ResolvedModel:
     if not model_uri.startswith("models:/"):
         path = Path(model_uri)
         if not path.is_file():
             raise FileNotFoundError(f"detector model not found: {path}")
-        return ResolvedModel(path, path.stem)
+        return ResolvedModel(path, _downloaded_version(path) or path.stem)
 
     # Imported here so local-file and dummy setups do not pay MLflow's import time.
     import mlflow

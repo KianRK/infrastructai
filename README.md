@@ -4,7 +4,7 @@ End-to-end road damage analysis: upload a road photo, an object detector trained
 RDD2022 localises the damage, and a small self-hosted LLM describes it. Served with
 Ray Serve on Azure Kubernetes Service.
 
-> **Status: work in progress.** Milestone 7 of 12 (authentication, rate limiting, upload validation). The full
+> **Status: work in progress.** Milestone 8 of 12 (authentication, rate limiting, upload validation). The full
 > README (architecture, deployment, cost, model card) is written in the final milestone.
 
 ## Repository layout
@@ -108,6 +108,49 @@ React + TypeScript + Vite. Login screen, image upload with client-side validatio
 WebP; 10 MB), the photo with bounding boxes and labels, the written assessment with its
 source (language model or template), and loading, error and session-expired states. Boxes use
 the API's relative coordinates, so they stay aligned at any display size.
+
+## Containers
+
+```bash
+make compose-up          # frontend + backend with dummy models: http://localhost:8080
+make smoke-test          # end-to-end check of the running stack
+make compose-down
+
+make model-fetch         # once: copy the registered "production" detector to ./models
+make compose-up-models   # the same stack with the real detector and LLM
+```
+
+| Image | Base | Compressed size | Runs as |
+| --- | --- | --- | --- |
+| `frontend` | `nginx-unprivileged` (Alpine) | 26 MB | uid 101 |
+| `serving` | `python:3.12-slim` | 0.3 GB, 1.4 GB with LLM weights | uid 1000 |
+| `training` | `nvidia/cuda:13.0-base` | 3.8 GB (CUDA build of PyTorch) | uid 10001 |
+
+All three are multi-stage builds with base images pinned by digest and Python and npm
+dependencies installed from the lockfiles. Build tools (uv, Node) stay in the build stages.
+
+- **Serving** takes Ray from `uv.lock` on a slim Python base instead of building on the
+  `rayproject/ray` image: about a quarter of the size (that base alone is 0.9 GB
+  compressed), no passwordless `sudo` for the container user, and exactly the dependency
+  versions the tests ran against. The LLM
+  weights are fetched at build time, verified against a pinned SHA-256, and stored in the
+  image (`--build-arg LLM=none` leaves them out), so a pod start does not depend on
+  Hugging Face.
+- **Compose** mirrors the cluster layout: a gateway (nginx here, Envoy Gateway on AKS)
+  routes `/api` to the Ray Serve application and everything else to the frontend, limits
+  the request size, and applies a coarse rate limit in front of the application's own.
+  Containers run with all capabilities dropped; frontend and gateway have read-only
+  file systems.
+- **Frontend** responses carry a Content-Security-Policy (`default-src 'self'`), and
+  hashed assets are cached for a year while the app shell is always revalidated.
+- **Training** in a container:
+  `docker run --rm --gpus all --ipc=host --user "$(id -u):$(id -g)" -v "$PWD/training/data:/app/data" -v "$PWD/training/runs:/app/runs" -e MLFLOW_TRACKING_URI=<server> roadscan-training:local`.
+  It runs `rdd.pipeline` by default; append `rdd.download` or `rdd.prepare` for the data
+  steps. The tracking server must be reachable from the container: a local SQLite
+  registry records host paths and is not usable from inside it.
+
+CI builds the images and runs the smoke test against the compose stack on every pull
+request (serving without the LLM weights, training with CPU-only PyTorch).
 
 ## Security
 

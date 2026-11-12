@@ -72,7 +72,9 @@ def test_prepare_builds_yolo_dataset(data_config: DataConfig) -> None:
 
     dataset = yaml.safe_load((processed / "dataset.yaml").read_text())
     assert dataset["names"] == {0: "D00", 1: "D10"}
-    assert (Path(dataset["path"]) / dataset["val"]).is_dir()
+    # Location-independent: split directories are relative to dataset.yaml itself.
+    assert "path" not in dataset
+    assert (processed / dataset["val"]).is_dir()
 
     saved = json.loads((processed / "stats.json").read_text())
     total = {c: sum(saved[s]["boxes"][c] for s in ("train", "val", "test")) for c in ("D00", "D10")}

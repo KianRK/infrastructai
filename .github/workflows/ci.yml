@@ -63,3 +63,28 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  docker:
+    name: Docker (build and run)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # The images CI builds are the lightweight variants: the serving image without the
+      # LLM weights, the training image with CPU-only PyTorch. Same Dockerfiles as the
+      # deployed images, different build arguments.
+      - name: Build the training image
+        run: docker build --build-arg TORCH=cpu -t roadscan-training:ci training
+      - name: Training image runs as a non-root user and finds its entry point
+        run: |
+          test "$(docker run --rm --entrypoint id roadscan-training:ci -u)" != "0"
+          docker run --rm roadscan-training:ci rdd.pipeline --help
+      - name: Start frontend and backend with docker compose
+        run: docker compose up --build --detach --wait
+      - name: Smoke test through the gateway
+        env:
+          ROADSCAN_DEMO_PASSWORD: roadscan-dev # the compose development default
+        run: python3 scripts/smoke_test.py http://localhost:8080
+      - name: Container logs
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+

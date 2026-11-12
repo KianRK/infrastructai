@@ -45,7 +45,7 @@ class EvalMetrics:
 def evaluate(cfg: TrainConfig, weights: Path, run_name: str) -> EvalMetrics:
     model = YOLO(str(weights))
     results = model.val(
-        data=str(cfg.data),
+        data=str(cfg.data.resolve()),  # absolute: dataset.yaml is located relative to it
         split=cfg.evaluate.split,
         conf=cfg.evaluate.conf,
         imgsz=cfg.train.imgsz,

@@ -1,0 +1,8 @@
+# Allow-list: only what the image build reads. The dataset, runs and weights stay out.
+*
+!pyproject.toml
+!uv.lock
+!.python-version
+!src
+!configs
+**/__pycache__

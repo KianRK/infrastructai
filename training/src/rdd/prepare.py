@@ -149,8 +149,9 @@ def prepare(cfg: DataConfig, workers: int | None = None) -> dict[str, object]:
     if skipped:
         log.warning("skipped %d unreadable items, see stats.json", len(skipped))
 
+    # No "path" entry: the trainer then takes the directory of dataset.yaml as the root,
+    # so the prepared data can be moved or mounted elsewhere (e.g. into a container).
     dataset = {
-        "path": str(out.resolve()),
         **{split: f"images/{split}" for split in SPLITS},
         "names": dict(enumerate(cfg.class_ids)),
     }

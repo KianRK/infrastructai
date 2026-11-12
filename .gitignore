@@ -38,3 +38,6 @@ node_modules/
 .idea/
 .DS_Store
 mlflow.db
+
+# Detector copied out of the registry for docker compose (make model-fetch)
+/models/

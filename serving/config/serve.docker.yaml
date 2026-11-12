@@ -1,0 +1,31 @@
+# Ray Serve config for docker compose with dummy models (see compose.yaml).
+proxy_location: HeadOnly
+http_options:
+  host: 0.0.0.0
+  port: 8000
+
+applications:
+  - name: roadscan
+    route_prefix: /
+    import_path: app.main:build_app
+    args:
+      detector:
+        backend: dummy
+      llm:
+        backend: dummy
+      auth:
+        # Plain HTTP on localhost; secrets come from ROADSCAN_DEMO_PASSWORD and
+        # ROADSCAN_JWT_SECRET (compose.yaml sets development values).
+        cookie_secure: false
+        # The compose gateway is the one proxy in front and sets X-Forwarded-For.
+        trusted_proxy_hops: 1
+    deployments:
+      - name: Api
+        num_replicas: 1
+        ray_actor_options: { num_cpus: 0.25 }
+      - name: Detector
+        num_replicas: 1
+        ray_actor_options: { num_cpus: 0.5 }
+      - name: Describer
+        num_replicas: 1
+        ray_actor_options: { num_cpus: 0.5 }

@@ -1,0 +1,58 @@
+# Local stack: gateway -> frontend and Ray Serve application, as on the cluster.
+#   docker compose up --build        dummy models, starts in seconds
+#   then open http://localhost:8080  (password: roadscan-dev unless overridden)
+# Real models: see compose.models.yaml.
+name: roadscan
+
+services:
+  serving:
+    build:
+      context: serving
+      args:
+        LLM: none
+    image: roadscan-serving:local
+    command: ["serve", "run", "config/serve.docker.yaml"]
+    environment:
+      # Development values. On the cluster both come from Azure Key Vault.
+      ROADSCAN_DEMO_PASSWORD: ${ROADSCAN_DEMO_PASSWORD:-roadscan-dev}
+      ROADSCAN_JWT_SECRET: ${ROADSCAN_JWT_SECRET:-local-development-signing-key-not-for-production}
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8000/api/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 120s
+      start_interval: 2s
+
+  frontend:
+    build: frontend
+    image: roadscan-frontend:local
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+      start_interval: 1s
+
+  gateway:
+    image: nginxinc/nginx-unprivileged:1.30.6-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03
+    volumes:
+      - ./deploy/compose/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      serving:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy

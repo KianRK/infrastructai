@@ -2012,6 +2012,7 @@ dependencies = [
     { name = "defusedxml" },
     { name = "mlflow" },
     { name = "onnx" },
+    { name = "onnxruntime" },
     { name = "onnxslim" },
     { name = "pillow" },
     { name = "pydantic" },
@@ -2035,7 +2036,6 @@ gpu = [
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
-    { name = "onnxruntime" },
     { name = "pytest" },
     { name = "ruff" },
     { name = "types-defusedxml" },
@@ -2048,6 +2048,7 @@ requires-dist = [
     { name = "defusedxml", specifier = ">=0.7.1,<1" },
     { name = "mlflow", specifier = ">=3.15,<3.16" },
     { name = "onnx", specifier = ">=1.23,<2" },
+    { name = "onnxruntime", specifier = ">=1.31,<2" },
     { name = "onnxslim", specifier = ">=0.1.99" },
     { name = "pillow", specifier = ">=11,<13" },
     { name = "pydantic", specifier = ">=2.9,<3" },
@@ -2063,7 +2064,6 @@ provides-extras = ["cpu", "gpu", "azure"]
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.13" },
-    { name = "onnxruntime", specifier = ">=1.31,<2" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "ruff", specifier = ">=0.17" },
     { name = "types-defusedxml", specifier = ">=0.7.0.20260504" },

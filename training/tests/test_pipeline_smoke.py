@@ -32,7 +32,6 @@ def make_dataset(root: Path) -> Path:
                 f"{i % len(CLASSES)} 0.5 0.5 0.5 0.5\n"
             )
     dataset = {
-        "path": str(root),
         "train": "images/train",
         "val": "images/val",
         "test": "images/test",

@@ -46,7 +46,7 @@ def train(cfg: TrainConfig, run_name: str) -> Path:
     model.add_callback("on_fit_epoch_end", _log_epoch)
     params = cfg.train
     model.train(
-        data=str(cfg.data),
+        data=str(cfg.data.resolve()),  # absolute: dataset.yaml is located relative to it
         epochs=params.epochs,
         imgsz=params.imgsz,
         batch=params.batch,

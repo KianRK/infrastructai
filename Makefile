@@ -11,7 +11,7 @@ export RAY_ENABLE_UV_RUN_RUNTIME_ENV := 0
 export ROADSCAN_DEMO_PASSWORD ?= roadscan-dev
 export ROADSCAN_JWT_SECRET ?= local-development-signing-key-not-for-production
 
-.PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui serve-local serve-models frontend-dev
+.PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui serve-local serve-models frontend-dev docker-build compose-up compose-up-models compose-down model-fetch smoke-test
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -23,6 +23,7 @@ install: ## Install all Python and frontend dependencies
 
 lint: ## Lint Python (ruff) and frontend (ESLint)
 	@for p in $(PY_PROJECTS); do (cd $$p && uv run ruff check . && uv run ruff format --check .) || exit 1; done
+	cd serving && uv run ruff check ../scripts && uv run ruff format --check ../scripts
 	cd frontend && npm run lint
 
 format: ## Auto-format and auto-fix Python
@@ -61,3 +62,29 @@ serve-models: ## Run the Serve app with the registered detector and the real LLM
 
 frontend-dev: ## Run the frontend at http://localhost:5173 (needs serve-local or serve-models)
 	cd frontend && npm run dev
+
+docker-build: ## Build the three images (training, serving, frontend)
+	docker build -t roadscan-training:local training
+	docker build -t roadscan-serving:local-models serving
+	docker build -t roadscan-frontend:local frontend
+
+compose-up: ## Run frontend + backend in containers with dummy models at http://localhost:8080
+	docker compose up --build --detach --wait
+	@echo "Open http://localhost:8080 (password: $(ROADSCAN_DEMO_PASSWORD)). Stop with: make compose-down"
+
+model-fetch: ## Copy the registered "production" detector to ./models (for compose-up-models)
+	rm -rf models/roadscan-detector
+	cd training && MLFLOW_TRACKING_URI=sqlite:///mlflow.db uv run mlflow artifacts download \
+		--artifact-uri "models:/roadscan-detector@production" --dst-path ../models/roadscan-detector
+	chmod -R a+rX models/roadscan-detector
+
+compose-up-models: ## Same with the real detector and LLM (needs `make model-fetch` once)
+	@test -f models/roadscan-detector/model.onnx || { echo "Run first: make model-fetch"; exit 1; }
+	docker compose -f compose.yaml -f compose.models.yaml up --build --detach --wait
+	@echo "Open http://localhost:8080 (password: $(ROADSCAN_DEMO_PASSWORD)). Stop with: make compose-down"
+
+compose-down: ## Stop the containers
+	docker compose down
+
+smoke-test: ## Check a running stack end to end (URL=http://localhost:8080)
+	python3 scripts/smoke_test.py $(or $(URL),http://localhost:8080)
