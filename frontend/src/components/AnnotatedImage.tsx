@@ -1,4 +1,7 @@
+import type { CSSProperties } from 'react'
+
 import type { Detection } from '../api/types.ts'
+import { placeLabels } from '../labels.ts'
 
 interface Props {
   src: string
@@ -14,11 +17,13 @@ function percent(fraction: number): string {
  * (0..1), so percentages keep them aligned at any display size.
  */
 export function AnnotatedImage({ src, detections }: Props) {
+  const placements = placeLabels(detections)
   return (
     <div className="annotated">
       <img src={src} alt="Uploaded road" />
       {detections.map((detection, index) => {
         const { box } = detection
+        const { inside, end, row } = placements[index]
         const caption = `${detection.label} ${String(Math.round(detection.confidence * 100))}%`
         return (
           <div
@@ -33,10 +38,12 @@ export function AnnotatedImage({ src, detections }: Props) {
               height: percent(box.y_max - box.y_min),
             }}
           >
-            {/* Keep labels on the image: inside the box near the top edge, and
-                right-aligned for boxes in the right part (matters on narrow screens). */}
+            {/* Keep labels on the image: inside the box near the top edge, right-aligned
+                for boxes in the right part (matters on narrow screens), and stacked
+                where boxes share a corner. */}
             <span
-              className={`tag${box.y_min < 0.08 ? ' inside' : ''}${box.x_min > 0.55 ? ' end' : ''}`}
+              className={`tag${inside ? ' inside' : ''}${end ? ' end' : ''}`}
+              style={{ '--row': row } as CSSProperties}
             >
               {caption}
             </span>

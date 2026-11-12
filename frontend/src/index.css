@@ -204,6 +204,8 @@ button.link {
   font-weight: 600;
   line-height: 1.3;
   white-space: nowrap;
+  /* --row: labels of boxes sharing a corner are stacked (see labels.ts). */
+  transform: translateY(calc(var(--row, 0) * -100%));
 }
 
 .box.D10 .tag {
@@ -213,6 +215,7 @@ button.link {
 .tag.inside {
   bottom: auto;
   top: -2px;
+  transform: translateY(calc(var(--row, 0) * 100%));
 }
 
 .tag.end {
