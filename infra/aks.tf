@@ -46,6 +46,11 @@ resource "azurerm_kubernetes_cluster" "main" {
     only_critical_addons_enabled = local.profile.system_tainted
     temporary_name_for_rotation  = "systemtmp"
     tags                         = local.tags
+
+    # The value Azure sets by default; stated so that plans show no difference.
+    upgrade_settings {
+      max_surge = "10%"
+    }
   }
 
   network_profile {
@@ -69,6 +74,10 @@ resource "azurerm_kubernetes_cluster_node_pool" "cpu" {
   max_count             = local.cpu_node_max
   node_labels           = { "roadscan/pool" = "cpu" }
   tags                  = local.tags
+
+  upgrade_settings {
+    max_surge = "10%"
+  }
 }
 
 # GPU pool for the optional vLLM backend. No nodes, and no cost, until a pod asks for a GPU.

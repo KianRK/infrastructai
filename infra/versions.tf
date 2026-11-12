@@ -26,6 +26,8 @@ provider "azurerm" {
   # A new subscription has few resource providers registered; let Terraform register the
   # commonly used set.
   resource_provider_registrations = "extended"
+  # Not part of that set.
+  resource_providers_to_register = ["Microsoft.MachineLearningServices"]
 
   features {
     resource_group {
