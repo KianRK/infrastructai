@@ -25,7 +25,7 @@ runs:
         version: v4.3.1
     - uses: azure/use-kubelogin@v1.3
       with:
-        kubelogin-version: latest
+        kubelogin-version: v0.2.22
     - name: Cluster credentials
       shell: bash
       env:
