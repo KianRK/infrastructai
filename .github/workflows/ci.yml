@@ -80,6 +80,19 @@ jobs:
       - run: terraform init -backend=false -input=false
       - run: terraform validate
 
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5.1.0
+        with:
+          version: v4.3.1
+      - name: Lint and render with the local and the AKS example values
+        run: make chart-check
+      - name: Shell scripts
+        run: shellcheck scripts/*.sh deploy/platform/*.sh
+
   docker:
     name: Docker (build and run)
     runs-on: ubuntu-24.04

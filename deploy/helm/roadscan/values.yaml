@@ -1,0 +1,132 @@
+# Defaults describe the AKS deployment on the "free" sizing profile (one 2-vCPU / 8 GB
+# node for the application). Values that differ per installation and have no sensible
+# default are empty and checked at install time; see values-aks.example.yaml and
+# values-local.yaml.
+
+image:
+  # Registry both images are pulled from, e.g. acrroadscanab1cd.azurecr.io. Empty: use
+  # the repository names as they are (images already present on the node).
+  registry: ""
+  tag: "" # required; the CD pipeline sets the commit SHA
+  pullPolicy: IfNotPresent
+  serving:
+    repository: roadscan-serving
+  frontend:
+    repository: roadscan-frontend
+
+# Public DNS name, e.g. roadscan-ab1cd.westeurope.cloudapp.azure.com. Required with TLS.
+# Empty: the gateway answers for any host name (local clusters).
+host: ""
+
+tls:
+  # HTTPS with a Let's Encrypt certificate obtained by cert-manager (HTTP-01 challenge
+  # through the gateway); plain HTTP is redirected. false: plain HTTP only.
+  enabled: true
+  # false = Let's Encrypt staging: untrusted certificates, but generous rate limits.
+  # Use it while trying out changes to the gateway or DNS setup.
+  production: true
+
+gateway:
+  className: envoy
+  # Coarse limit per client address on /api, in front of the application's own limits.
+  rateLimit:
+    requests: 120
+    unit: Minute
+  # Largest request body. The application accepts 10 MB uploads; the rest is multipart
+  # overhead.
+  maxBodySize: 11Mi
+  # The LLM needs 10-25 s per description on two CPU threads; the application itself
+  # gives up after detector_timeout + describer_timeout.
+  requestTimeout: 180s
+  # AKS: attach the static public IP created by Terraform (outputs
+  # gateway_public_ip_name and resource_group). Empty: the cloud assigns an address.
+  azure:
+    publicIpName: ""
+    publicIpResourceGroup: ""
+
+# Where the demo password and the session signing key come from. Either way they reach
+# the application as files (demo-password, jwt-secret), never as environment variables
+# or chart values.
+secrets:
+  # keyVault: mounted from Azure Key Vault by the Secrets Store CSI driver, using the
+  #           service account's workload identity.
+  # kubernetesSecret: an existing Secret with the keys demo-password and jwt-secret.
+  source: keyVault
+  keyVault:
+    name: ""
+    tenantId: ""
+  kubernetesSecret:
+    name: roadscan-secrets
+
+serviceAccount:
+  # Must match the federated credential created by Terraform (variables
+  # kubernetes_namespace and serving_service_account).
+  name: roadscan-serving
+  # Client ID of the serving managed identity (Terraform output
+  # serving_identity_client_id). Empty: no Azure workload identity.
+  workloadIdentityClientId: ""
+
+ray:
+  # Must equal the Ray version inside the serving image (serving/uv.lock).
+  version: "2.59.1"
+  # How a changed pod template (e.g. a new image) is rolled out.
+  # InPlace:    the running Ray cluster is replaced by a new one; a short outage, but no
+  #             second set of pods. Required where the node has no room for two.
+  # NewCluster: KubeRay starts a second cluster and switches over when it is healthy;
+  #             no outage, needs twice the resources for a few minutes.
+  upgrade: InPlace
+  head:
+    # CPUs Ray may hand out to replicas. Ray's own processes are not counted, so this
+    # can equal the node's CPU count while the pod requests less.
+    numCpus: 2
+    # Ray's shared-memory object store (/dev/shm); counts towards the memory limit.
+    objectStoreMemoryMi: 512
+    resources:
+      requests:
+        cpu: "1"
+        memory: 3500Mi
+      limits:
+        memory: 5Gi
+    nodeSelector: {}
+    tolerations: []
+
+# Ray Serve application settings; rendered into the RayService's serve config.
+# Field reference: serving/src/app/settings.py.
+serve:
+  detector:
+    backend: onnx
+    model_uri: models:/roadscan-detector@production
+    confidence_threshold: 0.25
+    threads: 2
+  llm:
+    backend: llama_cpp
+    # Part of the serving image.
+    model_path: /opt/models/qwen2.5-1.5b-instruct-q4_k_m.gguf
+    threads: 2
+    max_tokens: 300
+    temperature: 0.2
+  # Fractions of a CPU reserved per replica; they must add up to at most ray.head.numCpus.
+  cpus:
+    api: 0.25
+    detector: 0.5
+    describer: 1
+  # MLflow tracking server holding the model registry (Terraform output
+  # mlflow_tracking_uri). Required for models:/ URIs.
+  mlflowTrackingUri: ""
+
+frontend:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      memory: 64Mi
+  nodeSelector: {}
+
+networkPolicy:
+  # Pods accept connections only from the gateway, from each other where needed, and
+  # (Ray) from the KubeRay operator. Enforced on AKS by Cilium.
+  enabled: true
+  gatewayNamespace: envoy-gateway-system
+  operatorNamespace: kuberay-system

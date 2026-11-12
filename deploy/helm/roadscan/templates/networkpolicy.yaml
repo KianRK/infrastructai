@@ -1,0 +1,51 @@
+{{- if .Values.networkPolicy.enabled }}
+# Ingress rules only; outbound traffic (model registry, DNS) is not restricted.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-frontend
+  labels:
+    {{- include "roadscan.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: roadscan-frontend
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.gatewayNamespace }}
+      ports:
+        - port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-serving
+  labels:
+    {{- include "roadscan.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: roadscan-serving
+  policyTypes: [Ingress]
+  ingress:
+    # The gateway reaches the Serve HTTP port only.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.gatewayNamespace }}
+      ports:
+        - port: 8000
+    # KubeRay submits the Serve config and checks health through the dashboard.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.operatorNamespace }}
+    # Ray pods talk to each other.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: roadscan-serving
+{{- end }}

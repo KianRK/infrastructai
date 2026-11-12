@@ -1,0 +1,34 @@
+# Local cluster (minikube, kind): images loaded onto the node, dummy models, plain HTTP,
+# secrets from an ordinary Kubernetes Secret. See deploy/README.md.
+image:
+  tag: local
+  pullPolicy: Never
+
+tls:
+  enabled: false
+
+secrets:
+  source: kubernetesSecret
+
+ray:
+  head:
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        memory: 3Gi
+
+serve:
+  # Dummy backends take no settings: null removes the defaults of the real ones.
+  detector:
+    backend: dummy
+    model_uri: null
+    confidence_threshold: null
+    threads: null
+  llm:
+    backend: dummy
+    model_path: null
+    threads: null
+    max_tokens: null
+    temperature: null

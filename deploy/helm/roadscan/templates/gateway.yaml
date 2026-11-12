@@ -1,0 +1,169 @@
+{{- $appListener := ternary "https" "http" .Values.tls.enabled }}
+# Settings of the Envoy proxy that Envoy Gateway starts for this gateway.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "roadscan.labels" . | nindent 4 }}
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        # Local: the proxy sees the client's real address (rate limits, logs).
+        externalTrafficPolicy: Local
+        {{- if .Values.gateway.azure.publicIpName }}
+        annotations:
+          service.beta.kubernetes.io/azure-pip-name: {{ .Values.gateway.azure.publicIpName | quote }}
+          service.beta.kubernetes.io/azure-load-balancer-resource-group: {{ required "gateway.azure.publicIpResourceGroup is required" .Values.gateway.azure.publicIpResourceGroup | quote }}
+        {{- end }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "roadscan.labels" . | nindent 4 }}
+  {{- if .Values.tls.enabled }}
+  annotations:
+    # cert-manager obtains and renews the certificate named in the https listener.
+    cert-manager.io/issuer: {{ .Release.Name }}-letsencrypt
+  {{- end }}
+spec:
+  gatewayClassName: {{ .Values.gateway.className }}
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: {{ .Release.Name }}
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      {{- with .Values.host }}
+      hostname: {{ . | quote }}
+      {{- end }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- if .Values.tls.enabled }}
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: {{ .Values.host | quote }}
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: {{ .Release.Name }}-tls
+      allowedRoutes:
+        namespaces:
+          from: Same
+    {{- end }}
+---
+# /api -> Ray Serve. The path is passed on unchanged; the application serves /api/...
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{- include "roadscan.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Release.Name }}
+      sectionName: {{ $appListener }}
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /api }
+      backendRefs:
+        # Created by KubeRay; follows the active Ray cluster.
+        - name: {{ .Release.Name }}-serve-svc
+          port: 8000
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ .Release.Name }}-frontend
+  labels:
+    {{- include "roadscan.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Release.Name }}
+      sectionName: {{ $appListener }}
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: / }
+      backendRefs:
+        - name: {{ .Release.Name }}-frontend
+          port: 8080
+---
+# Limits for the API route, in front of the application's own.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{- include "roadscan.labels" . | nindent 4 }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ .Release.Name }}-api
+  rateLimit:
+    type: Local
+    local:
+      rules:
+        # One bucket per client address; 429 when it is empty.
+        - clientSelectors:
+            - sourceCIDR:
+                type: Distinct
+                value: 0.0.0.0/0
+          limit:
+            requests: {{ .Values.gateway.rateLimit.requests }}
+            unit: {{ .Values.gateway.rateLimit.unit }}
+  # Larger bodies are answered with 413 before they reach the application.
+  requestBuffer:
+    limit: {{ .Values.gateway.maxBodySize }}
+  timeout:
+    http:
+      requestTimeout: {{ .Values.gateway.requestTimeout }}
+{{- if .Values.tls.enabled }}
+---
+# Plain HTTP is redirected. cert-manager's temporary challenge route
+# (/.well-known/acme-challenge/...) is more specific and takes precedence.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ .Release.Name }}-https-redirect
+  labels:
+    {{- include "roadscan.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ .Release.Name }}
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+---
+# Let's Encrypt account for this namespace. No contact e-mail is registered (optional).
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Release.Name }}-letsencrypt
+  labels:
+    {{- include "roadscan.labels" . | nindent 4 }}
+spec:
+  acme:
+    server: {{ ternary "https://acme-v02.api.letsencrypt.org/directory" "https://acme-staging-v02.api.letsencrypt.org/directory" .Values.tls.production }}
+    privateKeySecretRef:
+      name: {{ .Release.Name }}-letsencrypt-{{ ternary "account" "staging-account" .Values.tls.production }}
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - name: {{ .Release.Name }}
+                kind: Gateway
+{{- end }}

@@ -81,7 +81,8 @@ After the first apply:
      uv run python -m rdd.pipeline --weights runs/<run>/weights/best.pt
    ```
 
-3. **GitHub Actions:** the deployment workflow needs the outputs
+3. **Deploy the application:** see [`deploy/README.md`](../deploy/README.md).
+4. **GitHub Actions:** the deployment workflow needs the outputs
    `github_identity_client_id`, `tenant_id` and `subscription_id` as repository variables
    (they are identifiers, not secrets).
 

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: roadscan
+description: RoadScan road damage analysis - Ray Serve application, frontend and gateway
+type: application
+version: 0.1.0
+# Informational; the deployed images are set with image.tag.
+appVersion: "0.1.0"
+kubeVersion: ">=1.33.0-0"
+home: https://github.com/KianRK/infrastructai

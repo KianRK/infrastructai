@@ -1,0 +1,59 @@
+# One Ray cluster running the Serve application. The head pod also runs the replicas;
+# there are no worker pods (the whole application fits on one small node).
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "roadscan.labels" . | nindent 4 }}
+  annotations:
+    roadscan/cluster-config-hash: {{ include "roadscan.rayClusterConfig" . | sha256sum | trunc 16 }}
+spec:
+  {{- if eq .Values.ray.upgrade "InPlace" }}
+  # KubeRay does not start a second cluster on changes. A changed cluster definition is
+  # rolled out by deleting the RayCluster (scripts/deploy.sh does it when the
+  # cluster-config-hash annotation changes); KubeRay then creates it anew.
+  upgradeStrategy:
+    type: None
+  {{- else }}
+  upgradeStrategy:
+    type: NewCluster
+  {{- end }}
+  serveConfigV2: |
+    proxy_location: EveryNode
+    http_options:
+      host: 0.0.0.0
+      port: 8000
+    applications:
+      - name: roadscan
+        route_prefix: /
+        import_path: app.main:build_app
+        args:
+          detector:
+            {{- toYaml .Values.serve.detector | nindent 12 }}
+          llm:
+            {{- toYaml .Values.serve.llm | nindent 12 }}
+          auth:
+            secrets_dir: {{ include "roadscan.secretsDir" . }}
+            # Browsers send Secure cookies over HTTPS only.
+            cookie_secure: {{ .Values.tls.enabled }}
+            # One proxy in front (the gateway), which appends the address it saw.
+            trusted_proxy_hops: 1
+        deployments:
+          - name: Api
+            # The application's rate limiter counts in memory: exactly one replica.
+            num_replicas: 1
+            ray_actor_options:
+              num_cpus: {{ .Values.serve.cpus.api }}
+          - name: Detector
+            num_replicas: 1
+            ray_actor_options:
+              num_cpus: {{ .Values.serve.cpus.detector }}
+          - name: Describer
+            num_replicas: 1
+            # One generation at a time per replica.
+            max_ongoing_requests: 1
+            ray_actor_options:
+              num_cpus: {{ .Values.serve.cpus.describer }}
+  rayClusterConfig:
+    {{- include "roadscan.rayClusterConfig" . | nindent 4 }}

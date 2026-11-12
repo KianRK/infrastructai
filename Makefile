@@ -1,4 +1,5 @@
 .DEFAULT_GOAL := help
+SHELL := /bin/bash
 PY_PROJECTS := training serving
 # PyTorch build for training: gpu (CUDA 13.0 wheels) or cpu.
 TORCH ?= gpu
@@ -12,11 +13,14 @@ export ROADSCAN_DEMO_PASSWORD ?= roadscan-dev
 export ROADSCAN_JWT_SECRET ?= local-development-signing-key-not-for-production
 # Terraform binary (1.17 or newer).
 TERRAFORM ?= terraform
+# Image tag for the cluster: the commit, so every deployment is traceable.
+TAG ?= $(shell git rev-parse --short=12 HEAD)
+CHART := deploy/helm/roadscan
 
-.PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui serve-local serve-models frontend-dev docker-build compose-up compose-up-models compose-down model-fetch smoke-test infra-check infra-plan infra-apply
+.PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui serve-local serve-models frontend-dev docker-build compose-up compose-up-models compose-down model-fetch smoke-test infra-check infra-plan infra-apply chart-check platform-install deploy-local aks-credentials images-push deploy
 
 help: ## Show this help
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-17s %s\n", $$1, $$2}'
 
 install: ## Install all Python and frontend dependencies
 	cd training && uv sync --extra $(TORCH)
@@ -102,3 +106,31 @@ infra-plan: ## Plan the Azure infrastructure (needs `az login` and infra/terrafo
 
 infra-apply: ## Apply the plan made by infra-plan (creates billable resources)
 	$(TERRAFORM) -chdir=infra apply tfplan
+
+chart-check: ## Lint the Helm chart and render it with the local and the AKS example values
+	helm lint $(CHART) -f $(CHART)/values-local.yaml
+	helm lint $(CHART) -f $(CHART)/values-aks.example.yaml
+	helm template roadscan $(CHART) -f $(CHART)/values-local.yaml > /dev/null
+	helm template roadscan $(CHART) -f $(CHART)/values-aks.example.yaml > /dev/null
+
+platform-install: ## Install Envoy Gateway, cert-manager and KubeRay into the current cluster (admin, once)
+	deploy/platform/install.sh
+
+deploy-local: ## Deploy to a local cluster (minikube/kind) with dummy models; see deploy/README.md
+	kubectl -n roadscan create secret generic roadscan-secrets --dry-run=client -o yaml \
+		--from-literal=demo-password=$(ROADSCAN_DEMO_PASSWORD) \
+		--from-literal=jwt-secret=$(ROADSCAN_JWT_SECRET) | kubectl apply -f -
+	scripts/deploy.sh -f $(CHART)/values-local.yaml
+
+aks-credentials: ## Point kubectl at the AKS cluster created by Terraform (needs kubelogin)
+	az aks get-credentials --overwrite-existing \
+		--resource-group "$$($(TERRAFORM) -chdir=infra output -raw resource_group)" \
+		--name "$$($(TERRAFORM) -chdir=infra output -raw aks_name)"
+	kubelogin convert-kubeconfig -l azurecli
+
+images-push: ## Build the serving and frontend images and push them to the Azure registry (TAG=commit)
+	scripts/push_images.sh "$$($(TERRAFORM) -chdir=infra output -raw acr_login_server)" $(TAG)
+
+deploy: ## Deploy the pushed images to AKS with values from the Terraform outputs (TAG=commit)
+	set -o pipefail; $(TERRAFORM) -chdir=infra output -json | python3 scripts/aks_values.py \
+		| scripts/deploy.sh -f - --set image.tag=$(TAG)

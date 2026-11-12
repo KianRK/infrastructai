@@ -1,0 +1,9 @@
+# The application's namespace. Created here, by a cluster admin, because the deployment
+# pipeline only has rights inside it. The "restricted" Pod Security Standard rejects
+# pods that run as root or ask for extra privileges.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: roadscan
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
