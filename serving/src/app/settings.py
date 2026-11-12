@@ -104,3 +104,7 @@ class AppArgs(_Args):
     llm: LLMArgs = Field(default_factory=DummyLLMArgs)
     auth: AuthArgs = Field(default_factory=AuthArgs)
     upload: UploadArgs = Field(default_factory=UploadArgs)
+    # How long a request waits for a model before the API answers 503. Without a limit a
+    # request waits for as long as a model replica is failing to start.
+    detector_timeout_seconds: float = Field(default=30.0, gt=0)
+    describer_timeout_seconds: float = Field(default=120.0, gt=0)

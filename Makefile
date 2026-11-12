@@ -54,6 +54,9 @@ serve-local: ## Run the Serve app with dummy models on :8000 (password: roadscan
 	cd serving && uv run serve run config/serve.local.yaml
 
 serve-models: ## Run the Serve app with the registered detector and the real LLM (needs `make mlflow-ui`)
+	@curl -sf -m 3 -o /dev/null http://127.0.0.1:5000/health || { \
+		echo "The MLflow server is not running; the detector is loaded from its registry."; \
+		echo "Start it in another terminal first: make mlflow-ui"; exit 1; }
 	cd serving && MLFLOW_TRACKING_URI=http://127.0.0.1:5000 uv run serve run config/serve.models.yaml
 
 frontend-dev: ## Run the frontend at http://localhost:5173 (needs serve-local or serve-models)

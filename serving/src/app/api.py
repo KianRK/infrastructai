@@ -4,8 +4,10 @@ No ``from __future__ import annotations`` here: with postponed annotations FastA
 not recognise the upload parameter of the route method and answered HTTP 422.
 """
 
+import asyncio
 import logging
 import math
+from collections.abc import Awaitable
 from typing import Annotated, Any
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile, status
@@ -56,6 +58,7 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
         status.HTTP_413_CONTENT_TOO_LARGE,
         status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
         status.HTTP_429_TOO_MANY_REQUESTS,
+        status.HTTP_503_SERVICE_UNAVAILABLE,
     )
 }
 
@@ -75,6 +78,23 @@ def _enforce(decision: Decision) -> None:
             "too many requests",
             headers={"Retry-After": str(max(1, math.ceil(decision.retry_after)))},
         )
+
+
+async def within[T](call: Awaitable[T], seconds: float, what: str) -> T:
+    """Await a model call, answering 503 if it takes longer than ``seconds``.
+
+    A model deployment without a running replica (still loading, or failing to start)
+    queues requests indefinitely; the caller should get an answer instead.
+    """
+    try:
+        return await asyncio.wait_for(call, seconds)
+    except TimeoutError:
+        log.error("%s did not answer within %.0f s", what, seconds)
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"{what} is not available",
+            headers={"Retry-After": "30"},
+        ) from None
 
 
 @serve.deployment
@@ -164,8 +184,16 @@ class Api:
         except UploadError as exc:
             raise HTTPException(exc.status, str(exc)) from exc
 
-        detected: DetectorOutput = await self._detector.detect.remote(image.pixels)
-        described: DescriberOutput = await self._describer.describe.remote(detected.detections)
+        detected: DetectorOutput = await within(
+            self._detector.detect.remote(image.pixels),
+            self._args.detector_timeout_seconds,
+            "detector",
+        )
+        described: DescriberOutput = await within(
+            self._describer.describe.remote(detected.detections),
+            self._args.describer_timeout_seconds,
+            "language model",
+        )
         return AnalysisResponse(
             detections=detected.detections,
             description=described.description,
