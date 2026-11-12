@@ -10,6 +10,7 @@ services:
       context: serving
       args:
         LLM: none
+        MEDIA: none
     image: roadscan-serving:local
     command: ["serve", "run", "config/serve.docker.yaml"]
     environment:

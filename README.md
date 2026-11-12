@@ -1,8 +1,10 @@
 # RoadScan
 
 End-to-end road damage analysis: upload a road photo, an object detector trained on
-RDD2022 localises the damage, and a small self-hosted LLM describes it. Served with
-Ray Serve on Azure Kubernetes Service.
+RDD2022 localises the damage, and a small self-hosted LLM describes it. A second page
+shows two traffic videos that the server analyses like camera feeds: road users are
+detected, tracked and counted while you watch. Served with Ray Serve on Azure Kubernetes
+Service.
 
 > **Status: work in progress.** Milestone 11 of 12 (deployed on AKS; CD pipeline and on-demand start/stop). The full
 > README (architecture, deployment, cost, model card) is written in the final milestone.
@@ -82,12 +84,13 @@ make serve-local   # dummy detector and LLM, no weights needed
 curl -F file=@road.jpg http://localhost:8000/api/analyze
 ```
 
-One Ray Serve application with three deployments, composed through deployment handles:
-`Api` (FastAPI ingress) -> `Detector` -> `Describer` (LLM). Backends are selected in the Serve
+One Ray Serve application with four deployments, composed through deployment handles:
+`Api` (FastAPI ingress) -> `Detector` -> `Describer` (LLM), and `Api` -> `Traffic` (see
+[Live traffic](#live-traffic)). Backends are selected in the Serve
 config file (`serving/config/serve.*.yaml`), which also sets replicas and CPU per deployment.
 To run the real models locally, keep `make mlflow-ui` running in one terminal (it serves the
-model registry) and start `make serve-models` in another. The LLM (1.1 GB) is downloaded on
-first start.
+model registry) and start `make serve-models` in another (after `make traffic-model` and
+`make media`, see below). The LLM (1.1 GB) is downloaded on first start.
 
 - **Detector:** the ONNX model with the registry alias `production`, run with ONNX Runtime
   on CPU. Pre- and postprocessing (letterbox, mapping boxes back to the photo) is plain
@@ -105,6 +108,44 @@ first start.
 The response schema is defined with Pydantic (`serving/src/app/schemas.py`) and committed as
 JSON Schema in `serving/contract/`; a contract test fails when the two diverge.
 
+## Live traffic
+
+```bash
+make traffic-model   # export the pretrained detector to ONNX and register it (no training)
+make media           # download and convert the two videos (needs ffmpeg; 0.4 GB download)
+```
+
+The page shows two videos as stand-ins for traffic cameras. Real camera streams were
+left out on purpose: the clips are replayed in a loop, and everything behind them works
+as it would for a live source.
+
+- **One analysis for all viewers.** The `Traffic` deployment plays each video against
+  the wall clock (position = time since start modulo the video length), analyses five
+  frames per second and publishes the results. It works only while somebody is watching
+  and pauses 20 seconds after the last viewer left. Frames it cannot analyse in time are
+  dropped, not queued; the page shows the achieved rate.
+- **Detection and tracking.** YOLO26n pretrained on COCO, exported to ONNX (384 x 640,
+  NMS included) and run with ONNX Runtime on one CPU thread; only road-user classes are
+  reported. A small tracker matches boxes between frames by overlap, which gives each
+  object a stable identity and lets it be counted once.
+- **Transport.** The browser asks once where the server's clock is, plays the video from
+  the API (range requests) 1.5 seconds behind it, and receives the results as
+  server-sent events; it draws the result that belongs to the frame on screen. The
+  server closes the event stream every two minutes and the browser reconnects, so no
+  proxy timeout is involved.
+- **Statistics:** objects in view, objects counted since the analysis started and in
+  the last minute, per class, and the analysis speed.
+
+Limits: the counts are estimates. There is no ground truth for the videos, and an object
+that is hidden for more than three seconds is counted again. The tracker settings
+(`serving/src/app/settings.py`) were chosen by looking at these two videos. The
+deployment keeps the clock and the counters in memory, so it runs as one replica.
+
+Videos (not in the repository; `serving/media/streams.json` holds the sources and
+checksums): "Straßenverkehr in Düsseldorf" by Slick, CC0 1.0, and "Moving vehicles in
+Link road, Cuttack, Odisha" by Subhashish Panigrahi, CC BY-SA 3.0 (cropped), both from
+Wikimedia Commons.
+
 ## Frontend
 
 ```bash
@@ -115,7 +156,8 @@ make frontend-dev   # terminal 2: http://localhost:5173, password "roadscan-dev"
 React + TypeScript + Vite. Login screen, image upload with client-side validation (JPEG, PNG,
 WebP; 10 MB), the photo with bounding boxes and labels, the written assessment with its
 source (language model or template), and loading, error and session-expired states. Boxes use
-the API's relative coordinates, so they stay aligned at any display size.
+the API's relative coordinates, so they stay aligned at any display size. The second page
+(`#traffic`) shows the two analysed videos with their statistics.
 
 ## Containers
 
@@ -124,8 +166,8 @@ make compose-up          # frontend + backend with dummy models: http://localhos
 make smoke-test          # end-to-end check of the running stack
 make compose-down
 
-make model-fetch         # once: copy the registered "production" detector to ./models
-make compose-up-models   # the same stack with the real detector and LLM
+make model-fetch         # once: copy the registered "production" detectors to ./models
+make compose-up-models   # the same stack with the real detectors, LLM and traffic videos
 ```
 
 | Image | Base | Compressed size | Runs as |
@@ -182,5 +224,6 @@ request (serving without the LLM weights, training with CPU-only PyTorch).
 ## License
 
 Code: [AGPL-3.0-or-later](LICENSE). The detector is trained with Ultralytics YOLO, which is
-AGPL-3.0. RDD2022 is licensed CC BY 4.0
-(Arya et al., 2022). Model licence notes follow in the final README.
+AGPL-3.0, as are the pretrained YOLO26n weights of the traffic page. RDD2022 is licensed
+CC BY 4.0 (Arya et al., 2022). The traffic videos are credited under
+[Live traffic](#live-traffic). Model licence notes follow in the final README.

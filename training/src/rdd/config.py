@@ -121,3 +121,27 @@ class TrainConfig(_StrictModel):
     def from_yaml(cls, path: Path) -> Self:
         with path.open(encoding="utf-8") as fh:
             return cls.model_validate(yaml.safe_load(fh))
+
+
+class PretrainedExport(_StrictModel):
+    # Height and width of the model input; 384 x 640 fits 16:9 video without padding.
+    imgsz: tuple[int, int]
+    simplify: bool = True
+    conf: float = Field(default=0.10, gt=0, lt=1)
+    iou: float = Field(default=0.5, gt=0, lt=1)
+    max_det: int = Field(default=100, ge=1)
+
+
+class PretrainedConfig(_StrictModel):
+    """A published checkpoint that is exported and registered without training."""
+
+    model: ModelConfig
+    output_dir: Path
+    export: PretrainedExport
+    mlflow: MlflowConfig
+    alias: str = Field(min_length=1)
+
+    @classmethod
+    def from_yaml(cls, path: Path) -> Self:
+        with path.open(encoding="utf-8") as fh:
+            return cls.model_validate(yaml.safe_load(fh))

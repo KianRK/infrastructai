@@ -4,7 +4,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from rdd.config import DataConfig
+from rdd.config import DataConfig, PretrainedConfig
 
 CONFIG_PATH = Path(__file__).parents[1] / "configs" / "data.yaml"
 
@@ -34,3 +34,11 @@ def test_split_fractions_must_sum_to_one() -> None:
     raw["split"] = {"train": 0.8, "val": 0.1, "test": 0.2, "seed": 1}
     with pytest.raises(ValidationError, match=r"sum to 1\.0"):
         DataConfig.model_validate(raw)
+
+
+def test_traffic_config_is_valid() -> None:
+    cfg = PretrainedConfig.from_yaml(CONFIG_PATH.parent / "traffic.yaml")
+
+    assert cfg.mlflow.registered_model == "roadscan-traffic"
+    height, width = cfg.export.imgsz
+    assert height % 32 == 0 and width % 32 == 0  # required by the detector's strides

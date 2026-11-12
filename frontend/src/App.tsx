@@ -1,11 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { analyze, ApiError, hasSession, logout } from './api/client.ts'
 import type { AnalysisResponse } from './api/types.ts'
 import { LoginForm } from './components/LoginForm.tsx'
 import { ResultView } from './components/ResultView.tsx'
+import { TrafficPage } from './components/TrafficPage.tsx'
 import { UploadPanel } from './components/UploadPanel.tsx'
 
 type Session = 'checking' | 'anonymous' | 'authenticated' | 'unreachable'
+type Page = 'photo' | 'traffic'
+
+function pageFromHash(): Page {
+  return window.location.hash === '#traffic' ? 'traffic' : 'photo'
+}
 
 interface Analysis {
   imageUrl: string
@@ -17,6 +23,7 @@ function App() {
   const [session, setSession] = useState<Session>('checking')
   const [notice, setNotice] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
+  const [page, setPage] = useState<Page>(pageFromHash)
   const busy = analysis !== null && analysis.result === null && analysis.error === null
 
   useEffect(() => {
@@ -32,6 +39,23 @@ function App() {
     return () => {
       cancelled = true
     }
+  }, [])
+
+  // The page is part of the address (#traffic), so it survives a reload and can be linked.
+  useEffect(() => {
+    const onHashChange = () => {
+      setPage(pageFromHash())
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => {
+      window.removeEventListener('hashchange', onHashChange)
+    }
+  }, [])
+
+  const sessionExpired = useCallback((message: string) => {
+    setAnalysis(null)
+    setNotice(message)
+    setSession('anonymous')
   }, [])
 
   // Release the previous preview when it is replaced or the page goes away.
@@ -50,9 +74,7 @@ function App() {
       setAnalysis({ ...current, result })
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 401) {
-        setAnalysis(null)
-        setNotice(caught.message)
-        setSession('anonymous')
+        sessionExpired(caught.message)
         return
       }
       const message = caught instanceof Error ? caught.message : 'The analysis failed.'
@@ -74,7 +96,7 @@ function App() {
     <>
       <header>
         <h1>RoadScan</h1>
-        <p className="muted">Road damage detection with an AI-written assessment</p>
+        <p className="muted">Road damage detection and live traffic analysis</p>
         {session === 'authenticated' ? (
           <button type="button" className="link" onClick={() => void signOut()}>
             Log out
@@ -99,6 +121,19 @@ function App() {
           />
         ) : null}
         {session === 'authenticated' ? (
+          <nav aria-label="Pages">
+            <a href="#photo" aria-current={page === 'photo' ? 'page' : undefined}>
+              Photo analysis
+            </a>
+            <a href="#traffic" aria-current={page === 'traffic' ? 'page' : undefined}>
+              Live traffic
+            </a>
+          </nav>
+        ) : null}
+        {session === 'authenticated' && page === 'traffic' ? (
+          <TrafficPage onUnauthorized={sessionExpired} />
+        ) : null}
+        {session === 'authenticated' && page === 'photo' ? (
           <>
             <UploadPanel disabled={busy} onFile={(file) => void run(file)} />
             {analysis?.error ? (
@@ -113,7 +148,7 @@ function App() {
         ) : null}
       </main>
       <footer className="muted">
-        Detector trained on RDD2022. Results are automated estimates, not an inspection.
+        Damage detector trained on RDD2022. Results are automated estimates, not an inspection.
       </footer>
     </>
   )

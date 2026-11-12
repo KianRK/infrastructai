@@ -5,12 +5,15 @@ not recognise the upload parameter of the route method and answered HTTP 422.
 """
 
 import asyncio
+import json
 import logging
 import math
-from collections.abc import Awaitable
+import time
+from collections.abc import AsyncIterator, Awaitable
 from typing import Annotated, Any
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile, status
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from ray import serve
 from ray.serve.handle import DeploymentHandle
@@ -28,7 +31,10 @@ from app.imaging import FileTooLargeError, UploadError, decode_upload
 from app.llm import DescriberOutput
 from app.ratelimit import Decision, SlidingWindowLimiter
 from app.schemas import AnalysisResponse
-from app.settings import AppArgs
+from app.settings import AppArgs, OnnxTrafficArgs
+from app.traffic.hub import EventHub, TooManySubscribersError
+from app.traffic.schemas import StreamList
+from app.traffic.source import display_path, load_manifest
 
 log = logging.getLogger("ray.serve")
 
@@ -55,6 +61,7 @@ _ERRORS: dict[int | str, dict[str, Any]] = {
     for code in (
         status.HTTP_400_BAD_REQUEST,
         status.HTTP_401_UNAUTHORIZED,
+        status.HTTP_404_NOT_FOUND,
         status.HTTP_413_CONTENT_TOO_LARGE,
         status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
         status.HTTP_429_TOO_MANY_REQUESTS,
@@ -101,11 +108,26 @@ async def within[T](call: Awaitable[T], seconds: float, what: str) -> T:
 @serve.ingress(fastapi_app)
 class Api:
     def __init__(
-        self, args: AppArgs, detector: DeploymentHandle[Any], describer: DeploymentHandle[Any]
+        self,
+        args: AppArgs,
+        detector: DeploymentHandle[Any],
+        describer: DeploymentHandle[Any],
+        traffic: DeploymentHandle[Any],
     ) -> None:
         self._args = args
         self._detector = detector
         self._describer = describer
+        self._traffic = traffic
+        self._traffic_events = EventHub(self._fetch_traffic_events, args.traffic.max_viewers)
+        # Videos the browser may request, by stream id. The files are part of the image.
+        self._videos = (
+            {
+                meta.id: display_path(args.traffic.media_dir, meta.id)
+                for meta in load_manifest(args.traffic.media_dir)
+            }
+            if isinstance(args.traffic, OnnxTrafficArgs)
+            else {}
+        )
         # Raises if a secret is missing: the replica then fails to start, which is the
         # intended outcome (never run without authentication).
         self._auth = Authenticator.from_args(args.auth)
@@ -203,3 +225,63 @@ class Api:
             detector_version=detected.version,
             llm_model=described.model,
         )
+
+    async def _fetch_traffic_events(self, seq: int) -> dict[str, Any]:
+        answer: dict[str, Any] = await self._traffic.events_after.remote(seq)
+        return answer
+
+    @fastapi_app.get("/api/traffic/streams", responses=_ERRORS)
+    async def traffic_streams(self, request: Request) -> StreamList:
+        self._require_session(request)
+        described: dict[str, Any] = await within(
+            self._traffic.describe.remote(), self._args.detector_timeout_seconds, "traffic analysis"
+        )
+        return StreamList.model_validate(described)
+
+    @fastapi_app.get(
+        "/api/traffic/streams/{stream_id}/video", responses=_ERRORS, response_class=FileResponse
+    )
+    async def traffic_video(self, stream_id: str, request: Request) -> FileResponse:
+        """The video of a stream. Supports range requests, which browsers need to seek."""
+        self._require_session(request)
+        path = self._videos.get(stream_id)  # lookup by id: no path is built from user input
+        if path is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such stream")
+        return FileResponse(
+            path, media_type="video/mp4", headers={"Cache-Control": "private, max-age=3600"}
+        )
+
+    @fastapi_app.get("/api/traffic/events", responses=_ERRORS, response_class=StreamingResponse)
+    async def traffic_events(self, request: Request) -> StreamingResponse:
+        """Server-sent events: one message per analysed frame, for all streams.
+
+        The connection ends after ``traffic.connection_seconds``; the browser's
+        EventSource reconnects by itself.
+        """
+        self._require_session(request)
+        if self._traffic_events.subscribers >= self._args.traffic.max_viewers:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "too many viewers",
+                headers={"Retry-After": "30"},
+            )
+        return StreamingResponse(
+            self._sse(),
+            media_type="text/event-stream",
+            # X-Accel-Buffering: nginx (the compose gateway) must not collect the events.
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
+
+    async def _sse(self) -> AsyncIterator[str]:
+        deadline = time.monotonic() + self._args.traffic.connection_seconds
+        yield "retry: 1000\n\n"  # reconnect delay for the browser, in milliseconds
+        try:
+            async for batch in self._traffic_events.subscribe():
+                if not batch:
+                    yield ": keep-alive\n\n"
+                for event in batch:
+                    yield f"data: {json.dumps(event, separators=(',', ':'))}\n\n"
+                if time.monotonic() >= deadline:
+                    return
+        except TooManySubscribersError:
+            return  # lost the race for the last place; the browser retries

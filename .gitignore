@@ -42,3 +42,6 @@ mlflow.db
 
 # Detector copied out of the registry for docker compose (make model-fetch)
 /models/
+
+# Prepared videos of the live-traffic page (serving/media/prepare.py)
+serving/media/out/

@@ -26,18 +26,25 @@ def _free_port() -> int:
 
 
 @pytest.fixture(scope="session")
-def base_url() -> Iterator[str]:
-    """The real Serve application (proxy, three deployments) with dummy backends."""
+def base_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """The real Serve application (proxy, four deployments). Detector and LLM are the
+    dummy backends; the traffic deployment reads a generated two-second video and runs a
+    tiny ONNX model that always finds one car."""
     import ray
     from ray import serve
 
     from app.main import build_app
-    from app.settings import AppArgs, AuthArgs, RateLimit
+    from app.settings import AppArgs, AuthArgs, OnnxTrafficArgs, RateLimit
+    from tests.media import write_media_dir, write_traffic_model
+
+    tmp = tmp_path_factory.mktemp("traffic")
+    media = write_media_dir(tmp / "media", seconds=2.0)
+    model = write_traffic_model(tmp / "traffic.onnx", [[16, 12, 48, 36, 0.9, 2]])
 
     port = _free_port()
-    # Logical CPUs: each of the three deployments reserves one by default, whatever the
+    # Logical CPUs: each of the four deployments reserves one by default, whatever the
     # machine actually has.
-    ray.init(num_cpus=4, include_dashboard=False, configure_logging=False)
+    ray.init(num_cpus=5, include_dashboard=False, configure_logging=False)
     try:
         serve.start(http_options={"host": "127.0.0.1", "port": port})
         args = AppArgs(
@@ -49,7 +56,16 @@ def base_url() -> Iterator[str]:
                 login_limit=RateLimit(limit=3, window_seconds=300),
                 analyze_session_limit=RateLimit(limit=4, window_seconds=300),
                 analyze_client_limit=RateLimit(limit=6, window_seconds=300),
-            )
+            ),
+            traffic=OnnxTrafficArgs(
+                backend="onnx",
+                model_uri=str(model),
+                media_dir=media,
+                track_min_hits=1,
+                track_count_hits=1,
+                max_viewers=2,
+                connection_seconds=3,
+            ),
         )
         serve.run(build_app(args), name="roadscan", route_prefix="/")
         yield f"http://127.0.0.1:{port}"

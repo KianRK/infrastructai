@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""End-to-end check of a running RoadScan stack: frontend, login, analysis, logout.
+"""End-to-end check of a running RoadScan stack: frontend, login, analysis, live traffic,
+logout.
 
     ROADSCAN_DEMO_PASSWORD=... python3 scripts/smoke_test.py https://<host>
 
@@ -74,6 +75,23 @@ class Client:
         body = json.dumps({"password": password}).encode()
         return self.request("POST", "/api/auth/login", body, "application/json")[0]
 
+    def first_event(self, path: str) -> dict[str, object] | None:
+        """The first message of a server-sent event stream, or None if there is none."""
+        request = urllib.request.Request(self._base + path)  # noqa: S310
+        try:
+            with self._opener.open(request, timeout=self._timeout) as response:
+                for _ in range(200):  # the stream starts with a retry hint and keep-alives
+                    line = response.readline()
+                    if not line:
+                        break
+                    if line.startswith(b"data: "):
+                        event: dict[str, object] = json.loads(line[6:])
+                        return event
+        except (OSError, ValueError) as error:
+            print(f"FAIL  GET {path}: {error}")
+            sys.exit(1)
+        return None
+
     def analyze(self, image: bytes) -> tuple[int, bytes]:
         boundary = "roadscan-smoke-test"
         body = (
@@ -125,8 +143,20 @@ def main() -> None:
     expect("no damage is reported for a blank image", result["detections"], [])
     expect("the no-damage text is used", result["description_source"], "no_damage")
 
+    # Live traffic: the streams are listed and the analysis produces results for them.
+    status, raw = client.request("GET", "/api/traffic/streams")
+    expect("traffic streams are listed", status, 200)
+    streams = {stream["id"] for stream in json.loads(raw)["streams"]}
+    expect("there is at least one traffic stream", bool(streams), True)
+    event = client.first_event("/api/traffic/events")
+    expect("the traffic analysis sends results", event is not None, True)
+    if event is not None:
+        expect("the result belongs to a listed stream", event.get("stream") in streams, True)
+        expect("the result carries statistics", "stats" in event and "objects" in event, True)
+
     expect("logout succeeds", client.request("POST", "/api/auth/logout")[0], 204)
     expect("session is gone after logout", client.request("GET", "/api/auth/session")[0], 401)
+    expect("traffic needs a session", client.request("GET", "/api/traffic/streams")[0], 401)
     print("smoke test passed")
 
 

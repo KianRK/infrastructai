@@ -10,6 +10,12 @@ afterEach(() => {
 URL.createObjectURL = () => 'blob:preview'
 URL.revokeObjectURL = () => undefined
 
+// jsdom does not play media; the page only needs play() to exist. (Not defined in test
+// files that run without a DOM.)
+if (typeof HTMLMediaElement !== 'undefined') {
+  HTMLMediaElement.prototype.play = () => Promise.resolve()
+}
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })

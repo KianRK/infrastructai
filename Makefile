@@ -19,7 +19,7 @@ CHART := deploy/helm/roadscan
 # Hours until a demo started with `make demo-up` is stopped automatically.
 HOURS ?= 2
 
-.PHONY: help install lint format typecheck test check data-download data-prepare train mlflow-ui serve-local serve-models frontend-dev docker-build compose-up compose-up-models compose-down model-fetch smoke-test infra-check infra-plan infra-apply chart-check platform-install deploy-local aks-credentials images-push deploy demo-up demo-down demo-status github-setup
+.PHONY: help install lint format typecheck test check data-download data-prepare train traffic-model media mlflow-ui serve-local serve-models frontend-dev docker-build compose-up compose-up-models compose-down model-fetch smoke-test infra-check infra-plan infra-apply chart-check platform-install deploy-local aks-credentials images-push deploy demo-up demo-down demo-status github-setup
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-17s %s\n", $$1, $$2}'
@@ -56,13 +56,20 @@ data-prepare: ## Convert VOC annotations to YOLO format and create the train/val
 train: ## Train, evaluate, export, and register the detector (config: training/configs/train.yaml)
 	cd training && uv run python -m rdd.pipeline
 
+traffic-model: ## Export the pretrained traffic detector (COCO) and register it; no training
+	cd training && uv run python -m rdd.pretrained
+
+media: ## Download and convert the videos of the live-traffic page (needs ffmpeg; about 0.4 GB)
+	python3 serving/media/prepare.py serving/media/out
+
 mlflow-ui: ## Browse local experiments and the model registry at http://localhost:5000
 	cd training && uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
 
 serve-local: ## Run the Serve app with dummy models on :8000 (password: roadscan-dev)
 	cd serving && uv run serve run config/serve.local.yaml
 
-serve-models: ## Run the Serve app with the registered detector and the real LLM (needs `make mlflow-ui`)
+serve-models: ## Run the Serve app with the registered detectors and the real LLM (needs `make mlflow-ui`, `make media`)
+	@test -f serving/media/out/manifest.json || { echo "Run first: make media"; exit 1; }
 	@curl -sf -m 3 -o /dev/null http://127.0.0.1:5000/health || { \
 		echo "The MLflow server is not running; the detector is loaded from its registry."; \
 		echo "Start it in another terminal first: make mlflow-ui"; exit 1; }
@@ -80,14 +87,17 @@ compose-up: ## Run frontend + backend in containers with dummy models at http://
 	docker compose up --build --detach --wait
 	@echo "Open http://localhost:8080 (password: $(ROADSCAN_DEMO_PASSWORD)). Stop with: make compose-down"
 
-model-fetch: ## Copy the registered "production" detector to ./models (for compose-up-models)
-	rm -rf models/roadscan-detector
-	cd training && MLFLOW_TRACKING_URI=sqlite:///mlflow.db uv run mlflow artifacts download \
-		--artifact-uri "models:/roadscan-detector@production" --dst-path ../models/roadscan-detector
-	chmod -R a+rX models/roadscan-detector
+model-fetch: ## Copy the registered "production" detectors to ./models (for compose-up-models)
+	@for model in roadscan-detector roadscan-traffic; do \
+		rm -rf models/$$model; \
+		(cd training && MLFLOW_TRACKING_URI=sqlite:///mlflow.db uv run mlflow artifacts download \
+			--artifact-uri "models:/$$model@production" --dst-path ../models/$$model) || exit 1; \
+	done
+	chmod -R a+rX models
 
 compose-up-models: ## Same with the real detector and LLM (needs `make model-fetch` once)
-	@test -f models/roadscan-detector/model.onnx || { echo "Run first: make model-fetch"; exit 1; }
+	@test -f models/roadscan-detector/model.onnx -a -f models/roadscan-traffic/model.onnx \
+		|| { echo "Run first: make model-fetch (after make train and make traffic-model)"; exit 1; }
 	docker compose -f compose.yaml -f compose.models.yaml up --build --detach --wait
 	@echo "Open http://localhost:8080 (password: $(ROADSCAN_DEMO_PASSWORD)). Stop with: make compose-down"
 

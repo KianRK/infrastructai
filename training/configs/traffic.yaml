@@ -1,0 +1,28 @@
+# Detector of the live-traffic page: a published COCO checkpoint, exported to ONNX and
+# registered without training. Loaded and validated by rdd.config.PretrainedConfig.
+#   make traffic-model
+
+model:
+  # Downloaded by Ultralytics on first use. YOLO26n: 80 COCO classes, of which the
+  # serving application reports road users only (person, car, bus, ...).
+  weights: yolo26n.pt
+
+# The checkpoint and the exported model are written here (git-ignored).
+output_dir: runs/traffic
+
+export:
+  imgsz: [384, 640]   # height, width
+  simplify: true
+  # As for the road-damage detector: NMS is part of the graph, output (1, max_det, 6).
+  conf: 0.10
+  iou: 0.5
+  max_det: 100
+
+mlflow:
+  # The MLFLOW_TRACKING_URI environment variable overrides this (Azure ML workspace).
+  tracking_uri: sqlite:///mlflow.db
+  experiment: roadscan-traffic
+  registered_model: roadscan-traffic
+
+# Alias set on the registered version; the serving stack loads this alias.
+alias: production

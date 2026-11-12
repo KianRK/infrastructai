@@ -11,7 +11,7 @@ from app.main import build_app
 
 CONFIG_DIR = Path(__file__).parents[2] / "config"
 CONFIGS = sorted(CONFIG_DIR.glob("serve.*.yaml"))
-APP_DEPLOYMENTS = {"Api", "Detector", "Describer"}
+APP_DEPLOYMENTS = {"Api", "Detector", "Describer", "Traffic"}
 
 
 @pytest.mark.parametrize("path", CONFIGS, ids=lambda p: p.name)

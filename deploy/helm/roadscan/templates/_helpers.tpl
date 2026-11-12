@@ -32,7 +32,10 @@ helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 {{- if and (hasPrefix "models:/" (default "" .Values.serve.detector.model_uri)) (not .Values.serve.mlflowTrackingUri) }}
 {{- fail "serve.mlflowTrackingUri is required for a models:/ detector URI" }}
 {{- end }}
-{{- $cpus := addf .Values.serve.cpus.api .Values.serve.cpus.detector .Values.serve.cpus.describer }}
+{{- if and (hasPrefix "models:/" (default "" .Values.serve.traffic.model_uri)) (not .Values.serve.mlflowTrackingUri) }}
+{{- fail "serve.mlflowTrackingUri is required for a models:/ traffic detector URI" }}
+{{- end }}
+{{- $cpus := addf .Values.serve.cpus.api .Values.serve.cpus.detector .Values.serve.cpus.describer .Values.serve.cpus.traffic }}
 {{- if gt $cpus (float64 .Values.ray.head.numCpus) }}
 {{- fail (printf "serve.cpus add up to %v, more than ray.head.numCpus (%v)" $cpus .Values.ray.head.numCpus) }}
 {{- end }}

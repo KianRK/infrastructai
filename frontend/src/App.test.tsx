@@ -2,7 +2,13 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
 import App from './App.tsx'
-import { analysisWithDamage, analysisWithoutDamage, imageFile } from './test/fixtures.ts'
+import { mockEventSource } from './test/eventSource.ts'
+import {
+  analysisWithDamage,
+  analysisWithoutDamage,
+  imageFile,
+  streamList,
+} from './test/fixtures.ts'
 import { json, mockApi, status } from './test/server.ts'
 
 const LOGGED_IN = { 'GET /api/auth/session': json({ authenticated: true }) }
@@ -157,4 +163,19 @@ test('logging out returns to the login form', async () => {
     expect(screen.getByLabelText('Password')).toBeInTheDocument()
   })
   expect(api.count('POST /api/auth/logout')).toBe(1)
+})
+
+test('the navigation switches between photo analysis and live traffic', async () => {
+  mockApi({ ...LOGGED_IN, 'GET /api/traffic/streams': json(streamList) })
+  mockEventSource()
+  const user = userEvent.setup()
+  render(<App />)
+
+  await user.click(await screen.findByRole('link', { name: 'Live traffic' }))
+  expect(await screen.findByRole('region', { name: 'Tram junction' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Choose image' })).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Live traffic' })).toHaveAttribute('aria-current', 'page')
+
+  await user.click(screen.getByRole('link', { name: 'Photo analysis' }))
+  expect(await screen.findByRole('button', { name: 'Choose image' })).toBeInTheDocument()
 })

@@ -65,13 +65,17 @@ def _register_from_artifacts(client: MlflowClient, model: onnx.ModelProto, name:
 
 
 def register(cfg: TrainConfig, onnx_path: Path) -> str:
+    """Register the trained detector under the configured name and alias."""
+    return register_onnx(onnx_path, cfg.mlflow.registered_model, cfg.gate.alias)
+
+
+def register_onnx(onnx_path: Path, name: str, alias: str) -> str:
     """Log the ONNX model to the active run, register it, and point the alias at it.
 
     Returns the new model version. On Azure ML the alias is recorded as the
     registered-model tag ``alias.<alias>`` holding the version; the serving application
     resolves it the same way.
     """
-    name, alias = cfg.mlflow.registered_model, cfg.gate.alias
     model = onnx.load(str(onnx_path))
     client = MlflowClient()
     if has_native_registry(mlflow.get_tracking_uri()):

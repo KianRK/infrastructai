@@ -32,3 +32,9 @@ serve:
     threads: null
     max_tokens: null
     temperature: null
+  traffic:
+    backend: dummy
+    model_uri: null
+    media_dir: null
+    confidence_threshold: null
+    threads: null

@@ -83,6 +83,10 @@ After `terraform apply` and the model registration (see [`infra/README.md`](../i
 Additionally needs [`kubelogin`](https://azure.github.io/kubelogin/) (`az aks install-cli`),
 because the cluster only accepts Entra ID logins.
 
+Both detectors (`roadscan-detector` and `roadscan-traffic`) must be registered in the
+Azure ML workspace first ([`infra/README.md`](../infra/README.md), step 2): a deployment
+whose model is missing does not start, and the application stays unhealthy.
+
 ```bash
 make aks-credentials     # kubectl context for the cluster
 make platform-install    # once per cluster

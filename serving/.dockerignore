@@ -4,4 +4,6 @@
 !uv.lock
 !src
 !config
+!media/streams.json
+!media/prepare.py
 **/__pycache__

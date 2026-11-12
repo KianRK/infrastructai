@@ -82,6 +82,14 @@ After the first apply:
      uv run python -m rdd.pipeline --weights runs/20261112-082410/weights/best.pt
    ```
 
+   The detector of the live-traffic page is registered the same way (it is a published
+   checkpoint, nothing is trained):
+
+   ```bash
+   UV_NO_SYNC=1 MLFLOW_TRACKING_URI="$(terraform -chdir=../infra output -raw mlflow_tracking_uri)" \
+     uv run python -m rdd.pretrained
+   ```
+
    `UV_NO_SYNC=1` keeps `uv run` from removing the extras again. The login is the Azure
    CLI's. Azure ML has no MLflow model aliases, so the pipeline records the alias there
    as the tag `alias.production` on the registered model, and the serving application

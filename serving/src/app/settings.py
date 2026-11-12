@@ -99,9 +99,64 @@ class UploadArgs(_Args):
     max_side: int = Field(default=1600, ge=320)
 
 
+COCO_TRAFFIC_CLASSES = ("person", "bicycle", "car", "motorcycle", "bus", "truck", "train")
+
+
+class _TrafficArgs(_Args):
+    """Settings of the live-traffic page that do not depend on the model backend."""
+
+    # Frames analysed per second and stream, at most. Frames that cannot be analysed in
+    # time are dropped; the achieved rate is part of the statistics.
+    max_fps: float = Field(default=5.0, gt=0, le=30)
+    # The analysis pauses when nobody has been watching for this long.
+    idle_seconds: float = Field(default=20.0, gt=0)
+    # Browsers play the video this far behind the server's clock, so the result for a
+    # frame has arrived before the frame is shown.
+    display_delay_seconds: float = Field(default=1.5, ge=0, le=10)
+    # Concurrent event-stream connections; further viewers get 503.
+    max_viewers: int = Field(default=20, ge=1)
+    # An event stream is closed after this long and the browser reconnects, so the
+    # connection never runs into a proxy's request timeout.
+    connection_seconds: float = Field(default=120.0, gt=1)
+    # Tracker: overlap needed to continue a track, frames a track survives unseen, and
+    # frames an object must be seen before it is shown and before it is counted. The
+    # defaults were chosen by looking at the two demo videos at 5 frames per second;
+    # there is no ground truth for them.
+    track_iou: float = Field(default=0.2, gt=0, lt=1)
+    track_max_missed: int = Field(default=15, ge=0)
+    track_min_hits: int = Field(default=3, ge=1)
+    track_count_hits: int = Field(default=8, ge=1)
+
+
+class DummyTrafficArgs(_TrafficArgs):
+    """Synthetic streams without video files or model weights."""
+
+    backend: Literal["dummy"] = "dummy"
+
+
+class OnnxTrafficArgs(_TrafficArgs):
+    """Pretrained COCO detector on the prepared videos in ``media_dir``."""
+
+    backend: Literal["onnx"]
+    # MLflow registry URI ("models:/roadscan-traffic@production") or path to an .onnx file.
+    model_uri: str
+    tracking_uri: str | None = None
+    # Directory written by serving/media/prepare.py: manifest.json, <id>.mp4 and
+    # <id>.analysis.mp4 per stream.
+    media_dir: Path
+    confidence_threshold: float = Field(default=0.35, gt=0, lt=1)
+    threads: int | None = Field(default=None, ge=1)
+    # COCO class names that are reported; everything else the model finds is ignored.
+    classes: tuple[str, ...] = COCO_TRAFFIC_CLASSES
+
+
+TrafficArgs = Annotated[DummyTrafficArgs | OnnxTrafficArgs, Field(discriminator="backend")]
+
+
 class AppArgs(_Args):
     detector: DetectorArgs = Field(default_factory=DummyDetectorArgs)
     llm: LLMArgs = Field(default_factory=DummyLLMArgs)
+    traffic: TrafficArgs = Field(default_factory=DummyTrafficArgs)
     auth: AuthArgs = Field(default_factory=AuthArgs)
     upload: UploadArgs = Field(default_factory=UploadArgs)
     # How long a request waits for a model before the API answers 503. Without a limit a

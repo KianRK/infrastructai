@@ -1,12 +1,14 @@
 # Override: the real detector and LLM instead of the dummy models.
-#   make model-fetch   # copies the registered "production" detector to ./models
+#   make model-fetch   # copies the registered "production" detectors to ./models
 #   docker compose -f compose.yaml -f compose.models.yaml up --build
-# The first build downloads the LLM weights (1.1 GB) into the image.
+# The first build downloads the LLM weights (1.1 GB) and the traffic videos (0.4 GB,
+# converted to 60 MB) into the image.
 services:
   serving:
     build:
       args:
         LLM: baked
+        MEDIA: baked
     image: roadscan-serving:local-models
     command: ["serve", "run", "config/serve.docker-models.yaml"]
     volumes:

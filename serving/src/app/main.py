@@ -10,6 +10,7 @@ from app.api import Api
 from app.detector import Detector
 from app.llm import Describer
 from app.settings import AppArgs
+from app.traffic.deployment import Traffic
 
 
 def _bind(deployment: object, *args: object) -> Application:
@@ -21,7 +22,7 @@ def _bind(deployment: object, *args: object) -> Application:
 
 
 def build_app(args: AppArgs | dict[str, Any]) -> Application:
-    """Three deployments, composed through deployment handles.
+    """Four deployments, composed through deployment handles.
 
     Serve passes the ``args:`` section of its config file as a plain dict; it is
     validated here so a typo in the config fails the deployment with a clear error.
@@ -32,4 +33,5 @@ def build_app(args: AppArgs | dict[str, Any]) -> Application:
     args = AppArgs.model_validate(args)
     detector = _bind(Detector, args.detector)
     describer = _bind(Describer, args.llm)
-    return _bind(Api, args, detector, describer)
+    traffic = _bind(Traffic, args.traffic)
+    return _bind(Api, args, detector, describer, traffic)

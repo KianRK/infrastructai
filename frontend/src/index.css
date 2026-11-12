@@ -245,6 +245,211 @@ button.link {
   }
 }
 
+nav {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+nav a {
+  padding: 0.45rem 0.9rem;
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+nav a[aria-current='page'] {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+
+.stream {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1.25rem;
+  margin-top: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 800px) {
+  .stream {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stream-view {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #0c0f14;
+  line-height: 0;
+}
+
+.stream-view video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.stream-view .placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  line-height: 1.5;
+  color: #9aa6b4;
+}
+
+.live {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 65%);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.live::before {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-right: 0.4em;
+  border-radius: 50%;
+  background: #e5484d;
+}
+
+/* Road-user classes: the Okabe-Ito palette, distinguishable with colour blindness. */
+[data-label='person'] {
+  --box: #cc79a7;
+}
+
+[data-label='bicycle'] {
+  --box: #009e73;
+}
+
+[data-label='car'] {
+  --box: #56b4e9;
+}
+
+[data-label='motorcycle'] {
+  --box: #f0e442;
+}
+
+[data-label='bus'] {
+  --box: #e69f00;
+}
+
+[data-label='truck'] {
+  --box: #d55e00;
+}
+
+[data-label='train'] {
+  --box: #ffffff;
+}
+
+.tbox {
+  position: absolute;
+  border: 2px solid var(--box, #fff);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 55%);
+  /* Results arrive five times per second; gliding between them reads as motion. */
+  transition:
+    left 0.2s linear,
+    top 0.2s linear,
+    width 0.2s linear,
+    height 0.2s linear;
+}
+
+.tbox .tag {
+  background: var(--box, #fff);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tbox {
+    transition: none;
+  }
+}
+
+.credit {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+}
+
+.credit a {
+  color: inherit;
+}
+
+.stream-stats p {
+  margin: 0 0 0.75rem;
+}
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
+.figures div {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.figures dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.figures dd {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stream-stats table {
+  width: 100%;
+  margin-bottom: 0.75rem;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.stream-stats th,
+.stream-stats td {
+  padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  font-weight: 400;
+}
+
+.stream-stats th:first-child {
+  text-align: left;
+}
+
+.stream-stats thead th {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-right: 0.45em;
+  border: 1px solid var(--muted);
+  border-radius: 2px;
+  background: var(--box, transparent);
+}
+
 footer {
   margin-top: 2rem;
   text-align: center;

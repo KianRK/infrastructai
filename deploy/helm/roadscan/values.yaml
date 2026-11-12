@@ -105,11 +105,22 @@ serve:
     threads: 2
     max_tokens: 300
     temperature: 0.2
+  # Live-traffic page: a COCO-pretrained detector on the videos stored in the image.
+  traffic:
+    backend: onnx
+    model_uri: models:/roadscan-traffic@production
+    media_dir: /opt/media
+    confidence_threshold: 0.35
+    # One thread: the analysis runs for as long as somebody watches and must leave
+    # room for the other models.
+    threads: 1
   # Fractions of a CPU reserved per replica; they must add up to at most ray.head.numCpus.
+  # These are scheduling units, not limits: a model uses the threads set above.
   cpus:
     api: 0.25
     detector: 0.5
-    describer: 1
+    describer: 0.75
+    traffic: 0.5
   # MLflow tracking server holding the model registry (Terraform output
   # mlflow_tracking_uri). Required for models:/ URIs.
   mlflowTrackingUri: ""

@@ -1,10 +1,13 @@
 # syntax=docker/dockerfile:1
 # Serving image: Ray Serve application (API, detector, LLM) on the official Ray image.
 #   docker build -t roadscan-serving serving                      # with the LLM weights
-#   docker build -t roadscan-serving --build-arg LLM=none serving # without (dummy LLM, CI)
+#   docker build -t roadscan-serving --build-arg LLM=none --build-arg MEDIA=none serving
+#                                              # without either (dummy models, CI)
 
 # "baked" stores the LLM weights in the image, "none" leaves them out.
 ARG LLM=baked
+# "baked" stores the videos of the live-traffic page in the image, "none" leaves them out.
+ARG MEDIA=baked
 
 # --- LLM weights: fetched by BuildKit and verified against a pinned checksum ------------
 FROM scratch AS llm-baked
@@ -19,6 +22,20 @@ FROM scratch AS llm-none
 WORKDIR /models
 
 FROM llm-${LLM} AS llm
+
+# --- Videos of the live-traffic page: downloaded (checksums in media/streams.json) and
+# --- converted with ffmpeg; only the results are copied into the runtime image ----------
+FROM debian:13-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS media-baked
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates ffmpeg python3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY media/streams.json media/prepare.py /src/
+RUN python3 /src/prepare.py /media --cache /tmp/downloads
+
+FROM scratch AS media-none
+WORKDIR /media
+
+FROM media-${MEDIA} AS media
 
 # --- Runtime: the official Ray image ----------------------------------------------------
 # Same Ray version as uv.lock; KubeRay requires the image's Ray to match the cluster's.
@@ -36,6 +53,7 @@ WORKDIR /app
 
 # Weights before dependencies and code: this 1.1 GB layer is then reused across changes.
 COPY --from=llm /models /opt/models
+COPY --from=media /media /opt/media
 
 # Install the locked dependencies into the base image's Python environment, replacing its
 # versions where the lockfile differs (--inexact keeps the packages only the base has).

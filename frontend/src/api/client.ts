@@ -1,4 +1,4 @@
-import type { AnalysisResponse } from './types.ts'
+import type { AnalysisResponse, StreamList } from './types.ts'
 
 export class ApiError extends Error {
   readonly status: number
@@ -81,4 +81,10 @@ export async function analyze(file: File): Promise<AnalysisResponse> {
   body.append('file', file)
   const response = await request('/api/analyze', { method: 'POST', body })
   return (await response.json()) as AnalysisResponse
+}
+
+/** The live-traffic streams and where the server's clock is in each of them. */
+export async function trafficStreams(): Promise<StreamList> {
+  const response = await request('/api/traffic/streams')
+  return (await response.json()) as StreamList
 }

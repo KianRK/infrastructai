@@ -33,6 +33,8 @@ spec:
             {{- toYaml .Values.serve.detector | nindent 12 }}
           llm:
             {{- toYaml .Values.serve.llm | nindent 12 }}
+          traffic:
+            {{- toYaml .Values.serve.traffic | nindent 12 }}
           auth:
             secrets_dir: {{ include "roadscan.secretsDir" . }}
             # Browsers send Secure cookies over HTTPS only.
@@ -55,5 +57,10 @@ spec:
             max_ongoing_requests: 1
             ray_actor_options:
               num_cpus: {{ .Values.serve.cpus.describer }}
+          - name: Traffic
+            # Owns the stream clock and the counters: exactly one replica.
+            num_replicas: 1
+            ray_actor_options:
+              num_cpus: {{ .Values.serve.cpus.traffic }}
   rayClusterConfig:
     {{- include "roadscan.rayClusterConfig" . | nindent 4 }}

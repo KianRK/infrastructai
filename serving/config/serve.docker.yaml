@@ -13,6 +13,8 @@ applications:
         backend: dummy
       llm:
         backend: dummy
+      traffic:
+        backend: dummy
       auth:
         # Plain HTTP on localhost; secrets come from ROADSCAN_DEMO_PASSWORD and
         # ROADSCAN_JWT_SECRET (compose.yaml sets development values).
@@ -29,3 +31,6 @@ applications:
       - name: Describer
         num_replicas: 1
         ray_actor_options: { num_cpus: 0.5 }
+      - name: Traffic
+        num_replicas: 1
+        ray_actor_options: { num_cpus: 0.25 }

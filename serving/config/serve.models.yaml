@@ -25,6 +25,14 @@ applications:
         threads: 2
         max_tokens: 300
         temperature: 0.2
+      traffic:
+        # Live-traffic page: `make traffic-model` registers the detector, `make media`
+        # downloads and converts the videos.
+        backend: onnx
+        model_uri: models:/roadscan-traffic@production
+        media_dir: media/out
+        confidence_threshold: 0.35
+        threads: 1
       auth:
         # Local runs use plain HTTP; secrets come from ROADSCAN_DEMO_PASSWORD and
         # ROADSCAN_JWT_SECRET (the Makefile sets development values).
@@ -41,3 +49,7 @@ applications:
         # Generation takes 10-25 s on two threads; one request at a time per replica.
         max_ongoing_requests: 1
         ray_actor_options: { num_cpus: 1 }
+      - name: Traffic
+        # Owns the stream clock and the counters: exactly one replica.
+        num_replicas: 1
+        ray_actor_options: { num_cpus: 0.5 }

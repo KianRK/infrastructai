@@ -29,15 +29,21 @@ class Letterbox:
     height: int
 
 
-def letterbox(image: NDArray[np.uint8], size: int) -> tuple[NDArray[np.float32], Letterbox]:
-    """Resize keeping the aspect ratio, pad to ``size`` x ``size``, scale to 0..1, NCHW."""
+def letterbox(
+    image: NDArray[np.uint8], size: int | tuple[int, int]
+) -> tuple[NDArray[np.float32], Letterbox]:
+    """Resize keeping the aspect ratio, pad to the model input, scale to 0..1, NCHW.
+
+    ``size`` is the side of a square input or ``(height, width)``.
+    """
+    target_h, target_w = (size, size) if isinstance(size, int) else size
     height, width = image.shape[:2]
-    scale = min(size / width, size / height)
+    scale = min(target_w / width, target_h / height)
     new_w, new_h = max(1, round(width * scale)), max(1, round(height * scale))
-    pad_x, pad_y = (size - new_w) // 2, (size - new_h) // 2
+    pad_x, pad_y = (target_w - new_w) // 2, (target_h - new_h) // 2
 
     resized = Image.fromarray(image).resize((new_w, new_h), Image.Resampling.BILINEAR)
-    canvas = np.full((size, size, 3), PAD_VALUE, dtype=np.uint8)
+    canvas = np.full((target_h, target_w, 3), PAD_VALUE, dtype=np.uint8)
     canvas[pad_y : pad_y + new_h, pad_x : pad_x + new_w] = np.asarray(resized)
 
     tensor = canvas.astype(np.float32).transpose(2, 0, 1)[np.newaxis] / 255.0
@@ -50,25 +56,19 @@ def _relative(value: float, extent: float) -> float:
     return round(min(max(value / extent, 0.0), 1.0), 5)
 
 
-def to_detections(
-    rows: NDArray[np.float32],
-    box: Letterbox,
-    class_names: Mapping[int, str],
-    confidence_threshold: float,
-) -> list[Detection]:
-    """Convert model output rows to API detections, most confident first.
+def to_boxes(
+    rows: NDArray[np.float32], box: Letterbox, confidence_threshold: float
+) -> list[tuple[int, float, tuple[float, float, float, float]]]:
+    """Model output rows as ``(class index, confidence, (x_min, y_min, x_max, y_max))``
+    with coordinates relative to the original image.
 
     ``rows`` has shape (N, 6): x1, y1, x2, y2 in model-input pixels, confidence, class
     index. NMS is part of the exported model; unused rows are all zeros.
     """
-    detections = []
+    boxes = []
     for x1, y1, x2, y2, confidence, class_index in rows.tolist():
         if confidence < confidence_threshold:
             continue  # also skips the zero padding
-        try:
-            damage_class = DamageClass(class_names[int(class_index)])
-        except (KeyError, ValueError):
-            continue  # a class this API does not know about
         # Undo the letterbox, then express relative to the original image and clip.
         x_min = _relative(x1 - box.pad_x, box.scale * box.width)
         x_max = _relative(x2 - box.pad_x, box.scale * box.width)
@@ -76,11 +76,31 @@ def to_detections(
         y_max = _relative(y2 - box.pad_y, box.scale * box.height)
         if x_max <= x_min or y_max <= y_min:
             continue  # lay entirely in the padding
+        confidence = round(min(max(confidence, 0.0), 1.0), 4)
+        boxes.append((int(class_index), confidence, (x_min, y_min, x_max, y_max)))
+    return boxes
+
+
+def to_detections(
+    rows: NDArray[np.float32],
+    box: Letterbox,
+    class_names: Mapping[int, str],
+    confidence_threshold: float,
+) -> list[Detection]:
+    """Convert model output rows to API detections, most confident first."""
+    detections = []
+    for class_index, confidence, (x_min, y_min, x_max, y_max) in to_boxes(
+        rows, box, confidence_threshold
+    ):
+        try:
+            damage_class = DamageClass(class_names[class_index])
+        except (KeyError, ValueError):
+            continue  # a class this API does not know about
         detections.append(
             Detection(
                 damage_class=damage_class,
                 label=DAMAGE_CLASS_NAMES[damage_class],
-                confidence=round(min(max(confidence, 0.0), 1.0), 4),
+                confidence=confidence,
                 box=BoundingBox(x_min=x_min, y_min=y_min, x_max=x_max, y_max=y_max),
             )
         )

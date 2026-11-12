@@ -1,0 +1,24 @@
+[
+  {
+    "id": "duesseldorf",
+    "title": "Tram junction",
+    "location": "Düsseldorf, Germany",
+    "attribution": "Slick, Wikimedia Commons",
+    "licence": "CC0 1.0",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Stra%C3%9Fenverkehr_in_D%C3%BCsseldorf.ogv",
+    "download_url": "https://upload.wikimedia.org/wikipedia/commons/8/84/Stra%C3%9Fenverkehr_in_D%C3%BCsseldorf.ogv",
+    "sha256": "bf63e9fcdf42fa429617d5e991f183baff619d06dd8aafdc97f76c13d22cc5eb",
+    "crop": null
+  },
+  {
+    "id": "cuttack",
+    "title": "Link Road junction",
+    "location": "Cuttack, Odisha, India",
+    "attribution": "Subhashish Panigrahi, Wikimedia Commons (cropped)",
+    "licence": "CC BY-SA 3.0",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Moving_vehicles_in_Link_road,_Cuttack,_Odisha.webm",
+    "download_url": "https://upload.wikimedia.org/wikipedia/commons/6/6d/Moving_vehicles_in_Link_road%2C_Cuttack%2C_Odisha.webm",
+    "sha256": "3e35d10f72a75c9360007bfe8666995c46ee8fd67e1f771cb46bb1bf4167de2f",
+    "crop": "864:486:108:120"
+  }
+]

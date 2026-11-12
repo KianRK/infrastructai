@@ -5,6 +5,7 @@ description = "Ray Serve application for RoadScan: API, detector, and LLM deploy
 requires-python = ">=3.12,<3.13"
 license = "AGPL-3.0-or-later"
 dependencies = [
+    "av>=16,<18",
     "huggingface-hub>=2.4,<3",
     "llama-cpp-python>=0.3.36,<0.4",
     "mlflow-skinny>=3.15,<3.16",

@@ -22,6 +22,13 @@ applications:
         threads: 2
         max_tokens: 300
         temperature: 0.2
+      traffic:
+        # Detector from the mounted ./models directory, videos from the image.
+        backend: onnx
+        model_uri: /models/roadscan-traffic/model.onnx
+        media_dir: /opt/media
+        confidence_threshold: 0.35
+        threads: 1
       auth:
         # Plain HTTP on localhost; secrets come from ROADSCAN_DEMO_PASSWORD and
         # ROADSCAN_JWT_SECRET (compose.yaml sets development values).
@@ -40,3 +47,7 @@ applications:
         # Generation takes 10-25 s on two threads; one request at a time per replica.
         max_ongoing_requests: 1
         ray_actor_options: { num_cpus: 1 }
+      - name: Traffic
+        # Owns the stream clock and the counters: exactly one replica.
+        num_replicas: 1
+        ray_actor_options: { num_cpus: 0.5 }
