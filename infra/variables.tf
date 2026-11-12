@@ -75,8 +75,8 @@ variable "gpu_spot" {
 
 variable "os_disk_type" {
   description = <<-EOT
-    Ephemeral: the OS disk lives on the VM's local cache disk, costs nothing, and is not
-    billed while the cluster is stopped. Needs a VM size whose cache disk is at least
+    Ephemeral: the OS disk lives on the VM's local (cache or NVMe) disk, costs nothing, and
+    is not billed while the cluster is stopped. Needs a VM size whose local disk is at least
     os_disk_size_gb. Managed: works with every VM size, billed also while stopped.
   EOT
   type        = string

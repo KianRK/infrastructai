@@ -21,8 +21,8 @@ write-only arguments, so they are in neither the plan nor the state.
 | | `free` (default) | `standard` |
 | --- | --- | --- |
 | For | Free Trial subscription (4 vCPUs per region, no GPU quota) | Pay-as-you-go |
-| System pool | 1 × `Standard_D2s_v3` (2 vCPU, 8 GB), also runs the operators | 1 × `Standard_D2s_v3`, system pods only |
-| CPU pool | 1 × `Standard_D2s_v3` | 1–2 × `Standard_D8s_v3` (8 vCPU, 32 GB) |
+| System pool | 1 × `Standard_D2ds_v7` (2 vCPU, 8 GB), also runs the operators | 1 × `Standard_D2s_v3`, system pods only |
+| CPU pool | 1 × `Standard_D2ds_v7` | 1–2 × `Standard_D8s_v3` (8 vCPU, 32 GB) |
 | GPU pool | none | 0–1 × `Standard_NC4as_T4_v3`, spot |
 | Automatic upgrades | off (an upgrade needs a spare node, the quota has none) | patch versions and node images |
 
@@ -39,15 +39,18 @@ Every value can be overridden individually; see `variables.tf`.
 az login
 az account set --subscription <subscription-id>
 
-# Is there quota for 4 vCPUs of the D-series v3 family in the region, and is the size
-# offered to this subscription (empty "Restrictions" column)?
-az vm list-usage --location westeurope -o table | grep -E 'Total Regional|DSv3'
-az vm list-skus --location westeurope --size Standard_D2s_v3 --all -o table
+# Quotas are only reported once the Compute resource provider is registered.
+az provider register --namespace Microsoft.Compute --wait
+
+# Is there quota for 4 vCPUs in the region and in the VM family, and is the size offered
+# to this subscription (Restrictions = None)?
+az vm list-usage --location westeurope -o table | grep -E 'Total Regional|Ddsv7'
+az vm list-skus --location westeurope --size Standard_D2ds_v7 --all -o table
 ```
 
 If the size is restricted or the quota is short, choose another region (`location`) or
 another 2-vCPU size (`system_vm_size`, `cpu_vm_size`). With a size whose cache disk is
-smaller than 48 GB, also set `os_disk_type = "Managed"`.
+smaller than 48 GB, or without one, also set `os_disk_type = "Managed"`.
 
 ## Apply
 
@@ -84,7 +87,7 @@ After the first apply:
 
 ## Cost
 
-- **Running** (`free` profile): two `Standard_D2s_v3` nodes, plus the items below.
+- **Running** (`free` profile): two `Standard_D2ds_v7` nodes, plus the items below.
 - **Stopped** (`az aks stop --resource-group rg-roadscan --name aks-roadscan`): the control
   plane and all nodes are deallocated and not billed. Node OS disks are ephemeral, so no
   disks remain. What continues to cost money: the container registry (Basic, a fixed
@@ -121,9 +124,12 @@ free again.
 
 These could not be verified without an active subscription:
 
-- **Free Trial limits.** The 4-vCPU regional quota is commonly reported, not a published
-  figure, and whether `Standard_D2s_v3` is offered depends on the subscription and
-  region. The commands under Prerequisites show the real values.
+- **Free Trial limits.** Checked on a Free Trial subscription in `westeurope` (2026-11):
+  4 vCPUs per region, `Standard_D2s_v3` not offered, `Standard_D2ds_v7` offered. Other
+  regions and dates may differ; the commands under Prerequisites show the real values.
+- **Ephemeral OS disk on NVMe.** `Standard_D2ds_v7` has no cache disk; its ephemeral OS
+  disk is placed on the local NVMe disk. If AKS rejects that, set
+  `os_disk_type = "Managed"` (a 48 GB disk per node is then billed also while stopped).
 - **Budget on a Free Trial.** Cost Management lists the Free Trial offer as supported; if
   creating the budget fails, set `budget_enabled = false`.
 - **MLflow model aliases.** Serving loads `models:/roadscan-detector@production`. Azure

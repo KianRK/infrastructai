@@ -5,10 +5,11 @@ data "azurerm_subscription" "current" {}
 locals {
   profiles = {
     # Free Trial: 4 vCPUs in total and none for GPUs. Two 2-vCPU nodes use all of it, so
-    # there is no room for the extra node an automatic upgrade needs.
+    # there is no room for the extra node an automatic upgrade needs. Older sizes such as
+    # D2s_v3 are not offered to Free Trial subscriptions (checked in westeurope, 2026-11).
     free = {
-      system_vm_size  = "Standard_D2s_v3" # 2 vCPU, 8 GB
-      cpu_vm_size     = "Standard_D2s_v3"
+      system_vm_size  = "Standard_D2ds_v7" # 2 vCPU, 8 GB, 110 GB local NVMe disk
+      cpu_vm_size     = "Standard_D2ds_v7"
       cpu_node_max    = 1
       gpu_node_max    = 0
       system_tainted  = false # operators (gateway, cert-manager, KubeRay) may use it
