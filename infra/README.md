@@ -22,7 +22,7 @@ write-only arguments, so they are in neither the plan nor the state.
 | --- | --- | --- |
 | For | Free Trial subscription (4 vCPUs per region, no GPU quota) | Pay-as-you-go |
 | System pool | 1 × `Standard_D2ds_v7` (2 vCPU, 8 GB), also runs the operators | 1 × `Standard_D2s_v3`, system pods only |
-| CPU pool | 1 × `Standard_D2ds_v7` | 1–2 × `Standard_D8s_v3` (8 vCPU, 32 GB) |
+| CPU pool | 1 × `Standard_D2ds_v7`, tainted `roadscan/pool=cpu:NoSchedule` (application only) | 1–2 × `Standard_D8s_v3` (8 vCPU, 32 GB) |
 | GPU pool | none | 0–1 × `Standard_NC4as_T4_v3`, spot |
 | Automatic upgrades | off (an upgrade needs a spare node, the quota has none) | patch versions and node images |
 

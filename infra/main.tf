@@ -13,6 +13,7 @@ locals {
       cpu_node_max    = 1
       gpu_node_max    = 0
       system_tainted  = false # operators (gateway, cert-manager, KubeRay) may use it
+      cpu_tainted     = true  # ... and must: the Ray pod needs most of the other node
       upgrade_channel = null
     }
     standard = {
@@ -21,6 +22,7 @@ locals {
       cpu_node_max    = 2
       gpu_node_max    = 1
       system_tainted  = true
+      cpu_tainted     = false # operators run next to the application
       upgrade_channel = "patch"
     }
   }

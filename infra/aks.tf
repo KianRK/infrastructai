@@ -78,7 +78,10 @@ resource "azurerm_kubernetes_cluster_node_pool" "cpu" {
   min_count             = 1
   max_count             = local.cpu_node_max
   node_labels           = { "roadscan/pool" = "cpu" }
-  tags                  = local.tags
+  # Without the taint the scheduler may fill this node with cluster add-ons (after a
+  # stop/start both nodes come up empty) and the Ray pod no longer fits.
+  node_taints = local.profile.cpu_tainted ? ["roadscan/pool=cpu:NoSchedule"] : null
+  tags        = local.tags
 
   upgrade_settings {
     max_surge = "10%"

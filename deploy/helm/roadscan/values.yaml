@@ -88,7 +88,10 @@ ray:
       limits:
         memory: 5Gi
     nodeSelector: {}
-    tolerations: []
+    # The Terraform profile "free" reserves its application node with this taint; the
+    # toleration has no effect elsewhere.
+    tolerations:
+      - { key: roadscan/pool, operator: Equal, value: cpu, effect: NoSchedule }
 
 # Ray Serve application settings; rendered into the RayService's serve config.
 # Field reference: serving/src/app/settings.py.
@@ -134,6 +137,8 @@ frontend:
     limits:
       memory: 64Mi
   nodeSelector: {}
+  tolerations:
+    - { key: roadscan/pool, operator: Equal, value: cpu, effect: NoSchedule }
 
 networkPolicy:
   # Pods accept connections only from the gateway, from each other where needed, and
