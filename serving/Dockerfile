@@ -1,7 +1,5 @@
 # syntax=docker/dockerfile:1
-# Serving image: Ray Serve application (API, detector, LLM).
-# Ray comes from uv.lock like every other dependency, on a slim Python base: about a
-# quarter of the size of a build on the rayproject/ray image, and the tested versions.
+# Serving image: Ray Serve application (API, detector, LLM) on the official Ray image.
 #   docker build -t roadscan-serving serving                      # with the LLM weights
 #   docker build -t roadscan-serving --build-arg LLM=none serving # without (dummy LLM, CI)
 
@@ -22,41 +20,43 @@ WORKDIR /models
 
 FROM llm-${LLM} AS llm
 
-FROM python:3.12.16-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS base
+# --- Runtime: the official Ray image ----------------------------------------------------
+# Same Ray version as uv.lock; KubeRay requires the image's Ray to match the cluster's.
+FROM rayproject/ray:2.59.1-py312-cpu@sha256:8c94fda2eb9636fba81e850337db5db023e23fcc830ce2d547b9698a5c2ffb2b
 
-# --- Build: the locked dependencies and the application, in a virtual environment ------
-FROM base AS build
-COPY --from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 /uv /usr/local/bin/uv
-ENV UV_LINK_MODE=copy \
+# The base image lets its user become root without a password (a rule in /etc/sudoers).
+# Remove sudo altogether.
+USER root
+RUN SUDO_FORCE_REMOVE=yes apt-get purge -y sudo \
+    && rm -rf /etc/sudoers /etc/sudoers.d /var/lib/apt/lists/* \
+    && gpasswd --delete ray sudo \
+    && mkdir /app && chown ray:users /app
+USER 1000:100
+WORKDIR /app
+
+# Weights before dependencies and code: this 1.1 GB layer is then reused across changes.
+COPY --from=llm /models /opt/models
+
+# Install the locked dependencies into the base image's Python environment, replacing its
+# versions where the lockfile differs (--inexact keeps the packages only the base has).
+# uv is mounted for these steps and not kept in the image.
+ENV UV_PROJECT_ENVIRONMENT=/home/ray/anaconda3 \
+    UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never
-WORKDIR /app
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490,source=/uv,target=/usr/local/bin/uv \
+    --mount=type=cache,target=/home/ray/.cache/uv,uid=1000,gid=100 \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --locked --no-dev --extra azure --no-install-project
-RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev --extra azure --inexact --no-install-project
+RUN --mount=from=ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490,source=/uv,target=/usr/local/bin/uv \
+    --mount=type=cache,target=/home/ray/.cache/uv,uid=1000,gid=100 \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=src,target=src \
-    uv sync --locked --no-dev --extra azure --no-editable
-
-# --- Runtime ------------------------------------------------------------------------------
-FROM base
-# wget: used by the container health checks.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends wget \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --uid 1000 --create-home ray \
-    && mkdir /app && chown ray:ray /app
-# Weights before code: this 1.1 GB layer is then reused across code changes.
-COPY --from=llm /models /opt/models
-COPY --from=build /app/.venv /app/.venv
-WORKDIR /app
+    uv sync --locked --no-dev --extra azure --inexact --no-editable
 COPY config config
-ENV PATH=/app/.venv/bin:$PATH \
-    PYTHONUNBUFFERED=1
-USER 1000:1000
+ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 # On Kubernetes, KubeRay supplies the command; this default is for docker compose.

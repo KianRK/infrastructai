@@ -123,19 +123,20 @@ make compose-up-models   # the same stack with the real detector and LLM
 | Image | Base | Compressed size | Runs as |
 | --- | --- | --- | --- |
 | `frontend` | `nginx-unprivileged` (Alpine) | 26 MB | uid 101 |
-| `serving` | `python:3.12-slim` | 0.3 GB, 1.4 GB with LLM weights | uid 1000 |
+| `serving` | `rayproject/ray` (CPU) | 1.2 GB, 2.3 GB with LLM weights | uid 1000 |
 | `training` | `nvidia/cuda:13.0-base` | 3.8 GB (CUDA build of PyTorch) | uid 10001 |
 
 All three are multi-stage builds with base images pinned by digest and Python and npm
 dependencies installed from the lockfiles. Build tools (uv, Node) stay in the build stages.
 
-- **Serving** takes Ray from `uv.lock` on a slim Python base instead of building on the
-  `rayproject/ray` image: about a quarter of the size (that base alone is 0.9 GB
-  compressed), no passwordless `sudo` for the container user, and exactly the dependency
-  versions the tests ran against. The LLM
-  weights are fetched at build time, verified against a pinned SHA-256, and stored in the
-  image (`--build-arg LLM=none` leaves them out), so a pod start does not depend on
-  Hugging Face.
+- **Serving** builds on the official Ray image, pinned to the Ray version in `uv.lock`;
+  the remaining dependencies are installed from the lockfile into the image's Python
+  environment. `sudo`, which the base image grants its user without a password, is
+  removed. The LLM weights are fetched at build time, verified against a pinned SHA-256,
+  and stored in the image (`--build-arg LLM=none` leaves them out), so a pod start does
+  not depend on Hugging Face. A slim Python base with Ray from the lockfile would be
+  about a quarter of the size (0.3 GB); the official image was chosen for its tested
+  compatibility with KubeRay.
 - **Compose** mirrors the cluster layout: a gateway (nginx here, Envoy Gateway on AKS)
   routes `/api` to the Ray Serve application and everything else to the frontend, limits
   the request size, and applies a coarse rate limit in front of the application's own.
