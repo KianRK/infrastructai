@@ -68,6 +68,15 @@ resource "azurerm_role_assignment" "github_operates_cluster" {
   principal_type       = "ServicePrincipal"
 }
 
+# The stop time of the demo is a tag on the cluster; the tags API also works while the
+# cluster is stopped, which `az aks update` does not.
+resource "azurerm_role_assignment" "github_tags_cluster" {
+  scope                = azurerm_kubernetes_cluster.main.id
+  role_definition_name = "Tag Contributor"
+  principal_id         = azurerm_user_assigned_identity.github.principal_id
+  principal_type       = "ServicePrincipal"
+}
+
 # Deploy the application: full rights inside its namespace, none outside.
 resource "azurerm_role_assignment" "github_deploys_app" {
   scope                = "${azurerm_kubernetes_cluster.main.id}/namespaces/${var.kubernetes_namespace}"

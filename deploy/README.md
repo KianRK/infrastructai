@@ -117,7 +117,6 @@ repository are public). Without them the workflows do nothing, e.g. in forks.
 | `CD` | CI passed on `main` (or manually) | Builds both images with a layer cache in the registry, pushes them tagged with the commit, and, if the cluster is running, upgrades the Helm release and runs the smoke test against the public URL. If the cluster is stopped, only the images are pushed. |
 | `Demo` → start | manually ("Run workflow", hours 1–12) | Starts the cluster, records the time of the automatic stop, deploys the newest image in the registry, runs the smoke test. |
 | `Demo` → stop | manually | Stops the cluster. |
-| `Demo` (schedule) | every 30 minutes | Stops the cluster once the recorded time has passed. |
 
 The same from a terminal, with your own Azure login:
 
@@ -128,14 +127,17 @@ make demo-down
 ```
 
 - **What the pipeline identity may do:** push images, operate the cluster resource (start,
-  stop, credentials), everything inside the `roadscan` namespace and nothing outside it,
+  stop, credentials, tags), everything inside the `roadscan` namespace and nothing outside it,
   and read the one Key Vault secret `demo-password` for the smoke test. It cannot read the
   signing key and has no rights on the other Azure resources.
-- **Automatic stop.** The stop time is the cluster's Azure tag `demo-stop-at`. A running
-  cluster without a valid tag counts as overdue, so one started with `az aks start` or by
-  `terraform apply` is stopped by the next check as well; use `make demo-up` to keep it
-  up. GitHub can delay scheduled runs and pauses them after 60 days without repository
-  activity; the budget alert remains as a second safeguard.
+- **Automatic stop.** The stop time is the cluster's Azure tag `demo-stop-at`, written
+  before the cluster is started. A Logic App (`infra/autostop.tf`) reads the cluster
+  every 15 minutes with its managed identity and stops it once the time has passed; its
+  role allows exactly reading and stopping the cluster. A running cluster without the
+  tag counts as overdue, so one started with `az aks start` or by `terraform apply` is
+  stopped by the next check as well; use `make demo-up` to keep it up. While the
+  cluster starts, stops or is updated, the check does nothing. The budget alert remains
+  as a second safeguard.
 - **After a stop** Azure needs 15–30 minutes before the cluster can be started again.
 - **Deployments are serialised:** deploy, start and stop jobs share one concurrency group.
 
@@ -162,8 +164,3 @@ pause `Demo` start: the cluster start, the deployment of a new image and the smo
 `CD` against the running cluster deployed and passed the smoke test. With both video
 streams analysed, the Ray pod reported 5 analysed frames per second per stream, no dropped
 frames and about 50 ms per inference.
-
-Not verified: the automatic stop. In the first eight hours after the workflow was added,
-GitHub started the half-hourly schedule once, and no scheduled run arrived within 15
-minutes of a due stop time. Treat the schedule as a backstop and stop the demo yourself
-(`make demo-down` or `Demo` → stop).

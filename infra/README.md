@@ -11,6 +11,7 @@ Everything RoadScan needs on Azure, in one resource group:
 | `keyvault.tf` | Key Vault with the generated secrets `demo-password` and `jwt-secret` |
 | `identities.tf` | Managed identities and federated credentials for the serving pods (AKS Workload Identity) and for GitHub Actions (OIDC), role assignments |
 | `budget.tf` | Monthly subscription budget with e-mail alerts |
+| `autostop.tf` | Logic App that stops the demo cluster at its scheduled time, with a role limited to reading and stopping the cluster |
 
 No password, key or client secret is created for any identity. The two application secrets
 are generated during `apply` as ephemeral values and written to Key Vault through
@@ -105,8 +106,6 @@ After the first apply:
    (a mismatch shows as `AADSTS700213` in the login step).
 
 ## Cost
-
-Prices and a monthly estimate are in the [main README](../README.md#cost).
 
 - **Running** (`free` profile): two `Standard_D2ds_v7` nodes, plus the items below.
 - **Stopped** (`az aks stop --resource-group rg-roadscan --name aks-roadscan`): the control

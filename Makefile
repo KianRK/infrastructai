@@ -147,7 +147,7 @@ deploy: ## Deploy the pushed images to AKS with values from the Terraform output
 	set -o pipefail; $(TERRAFORM) -chdir=infra output -json | python3 scripts/aks_values.py \
 		| scripts/deploy.sh -f - --set image.tag=$(TAG)
 
-demo-up: ## Start the demo cluster, deploy the newest pushed image, smoke test (HOURS=2 until auto-stop)
+demo-up: ## Start the demo cluster, deploy the newest pushed image, smoke test (HOURS=2 until the automatic stop)
 	scripts/demo.sh up $(HOURS)
 	$(MAKE) aks-credentials
 	$(MAKE) deploy TAG="$$(scripts/demo.sh latest-tag "$$($(TERRAFORM) -chdir=infra output -raw acr_login_server)")"

@@ -15,15 +15,15 @@ GitHub Actions.
 shortened. Photo: RDD2022 (CC BY 4.0); videos: Wikimedia Commons, credited under
 [Live traffic](#live-traffic).*
 
-The Azure deployment is started on demand and is normally switched off to save cost
-(see [Cost](#cost)); the recording above shows what it serves.
+The Azure deployment is started on demand and is normally switched off; the recording
+above shows what it serves.
 
 **Contents:** [Overview](#overview) · [Architecture](#architecture) ·
 [Technology choices](#technology-choices) · [Repository layout](#repository-layout) ·
 [Local setup](#local-setup) · [Data pipeline](#data-pipeline) · [Training](#training) ·
 [Model card](#model-card) · [Serving](#serving) · [Live traffic](#live-traffic) ·
 [Frontend](#frontend) · [Containers](#containers) · [Deployment](#deployment) ·
-[Cost](#cost) · [Security](#security) · [Limitations](#limitations) · [Licences](#licences)
+[Security](#security) · [Limitations](#limitations) · [Licences](#licences)
 
 ## Overview
 
@@ -113,6 +113,7 @@ flowchart LR
 | Ingress | Envoy Gateway (Gateway API), cert-manager | Actively maintained Gateway API implementation; rate limit, body limit and TLS are declared next to the routes | ingress-nginx |
 | Packaging | Helm chart | The same manifests with different values locally and on AKS; one release to upgrade or roll back | Kustomize |
 | Infrastructure | Terraform (azurerm) | Everything in Azure is reproducible and can be destroyed with one command | Portal or CLI scripts |
+| Automatic stop | Logic App with a managed identity and a two-action custom role | Runs in Azure, independent of whoever started the demo; GitHub's scheduler proved too irregular for this | A scheduled GitHub workflow |
 | Secrets | Key Vault with the CSI driver and workload identity | No secrets in the repository, images, chart values or environment variables | Kubernetes Secrets |
 | CI/CD | GitHub Actions with OIDC | No long-lived cloud credentials | Service-principal secrets |
 | Python tooling | uv, ruff, mypy (strict), pytest | Locked, fast, reproducible | |
@@ -397,6 +398,14 @@ make demo-down    # stop it
 ```
 
 The same start and stop are available as the `Demo` workflow in GitHub ("Run workflow").
+
+**On-demand operation.** The cluster runs only when it is needed. `az aks stop`
+deallocates the control plane and the nodes and keeps the cluster's state; node OS disks
+are ephemeral, so nothing of the nodes remains while it is stopped. A start writes the
+time of the stop into a tag on the cluster, and a Logic App checks that tag every 15
+minutes and stops the cluster once the time has passed. A running cluster without the
+tag counts as overdue. Budget alerts by e-mail are a second safeguard.
+
 Measured on the `free` profile: a start from the stopped state, including the deployment
 and the smoke test, takes about 9 minutes; a stop 2.5 minutes; an image build 9 minutes
 without and under 1 minute with the registry cache.
@@ -404,46 +413,6 @@ without and under 1 minute with the registry cache.
 To remove everything: `terraform destroy` in `infra/` (described in
 [`infra/README.md`](infra/README.md#destroy); documented, not yet exercised on this
 deployment).
-
-## Cost
-
-List prices in USD for Sweden Central, read from the Azure Retail Prices API on
-2026-11-13, for the `free` profile. These are estimates: the subscription is a free
-trial, which does not report billed amounts per resource, so they are not checked
-against an invoice.
-
-| Item | Price | Billed while stopped | Per month |
-| --- | --- | --- | --- |
-| 2 x `Standard_D2ds_v7` nodes (2 vCPU, 8 GB) | 0.166 per hour each | no | 0.33 per running hour |
-| AKS control plane, Free tier | 0 | | 0 |
-| Standard load balancer (created by AKS) | 0.025 per hour | yes (assumed: it keeps its rules while the cluster is stopped) | about 18 |
-| 2 static public IPv4 addresses (gateway, cluster egress) | 0.005 per hour each | yes | about 7 |
-| Container registry, Basic (10 GB included, 5.6 GB used) | 0.167 per day | yes | about 5 |
-| Storage account, Key Vaults, Log Analytics | usage-based | yes | under 1 |
-
-| Usage | Per month |
-| --- | --- |
-| Stopped all month | about 31 |
-| Running 1 hour per day | about 41 |
-| Running all the time | about 275 |
-
-The fixed part is larger than the running part for a demo that is rarely on. It can
-only be removed by destroying the deployment between uses (`terraform destroy`) and
-creating it again when needed.
-
-Cost controls in the project:
-
-- **On-demand operation.** `make demo-up` / `make demo-down` or the `Demo` workflow
-  start and stop the cluster (`az aks stop` deallocates control plane and nodes).
-- **Automatic stop.** A start records a stop time on the cluster; a scheduled workflow
-  stops the cluster when it has passed. GitHub's scheduler turned out to be unreliable
-  for this (two scheduled runs in the first 18 hours instead of one every 30 minutes),
-  so this is a backstop, not a guarantee.
-- **Budget alerts** by e-mail at 50, 80 and 100 % of a monthly amount. They notify; they
-  do not stop anything.
-- **Sizing.** CPU-only inference, one Ray pod, the Free control-plane tier, ephemeral OS
-  disks (nothing is billed for disks while stopped), a daily cap on log ingestion, a
-  registry build cache so that CD runs stay short.
 
 ## Security
 
@@ -485,8 +454,7 @@ Cost controls in the project:
   room for a second one; the API is unavailable while the new pod starts.
 - **vLLM backend untested.** `llm.backend: vllm` exists in the code for a GPU node, but
   no GPU image is built and it was never run; the free trial has no GPU quota.
-- **Automatic stop is not dependable** (see [Cost](#cost)), and `terraform destroy` is
-  documented but was not exercised.
+- **`terraform destroy`** is documented but was not exercised.
 - **Traffic counts are estimates**; the tracker settings were tuned by eye on the two
   videos.
 - **Not verified on AKS:** the live-traffic page in a real browser (it was measured

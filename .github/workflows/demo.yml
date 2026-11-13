@@ -1,8 +1,8 @@
 name: Demo
 
 # The demo cluster runs on demand. Start it here ("Run workflow") or with `make demo-up`;
-# it is stopped again by "stop", by `make demo-down`, or automatically by the half-hourly
-# check once the requested number of hours has passed. A stopped cluster is not billed for
+# it is stopped again by "stop", by `make demo-down`, or automatically by a Logic App in
+# Azure (infra/autostop.tf) once the requested number of hours has passed. A stopped cluster is not billed for
 # its control plane or nodes.
 
 on:
@@ -16,10 +16,6 @@ on:
       hours:
         description: "start: stop automatically after this many hours (1-12)"
         default: "2"
-  schedule:
-    # Automatic stop. GitHub may delay scheduled runs, and pauses them after 60 days
-    # without repository activity; the Azure budget alert is the second line of defence.
-    - cron: "7,37 * * * *"
 
 permissions:
   contents: read
@@ -49,7 +45,7 @@ jobs:
   start:
     name: Start, deploy the newest image, smoke test
     needs: config
-    if: needs.config.outputs.ready == 'true' && github.event_name == 'workflow_dispatch' && inputs.action == 'start'
+    if: needs.config.outputs.ready == 'true' && inputs.action == 'start'
     runs-on: ubuntu-24.04
     # One job at a time may deploy to, start or stop the cluster, across both workflows.
     concurrency:
@@ -82,7 +78,7 @@ jobs:
   stop:
     name: Stop
     needs: config
-    if: needs.config.outputs.ready == 'true' && github.event_name == 'workflow_dispatch' && inputs.action == 'stop'
+    if: needs.config.outputs.ready == 'true' && inputs.action == 'stop'
     runs-on: ubuntu-24.04
     concurrency:
       group: aks-roadscan
@@ -95,17 +91,3 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - run: scripts/demo.sh down
-
-  auto-stop:
-    name: Stop when the scheduled time has passed
-    needs: config
-    if: needs.config.outputs.ready == 'true' && github.event_name == 'schedule'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: azure/login@v3.1.0
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - run: scripts/demo.sh auto-stop
