@@ -118,6 +118,8 @@ flowchart LR
 | Packaging | Helm chart | The same manifests with different values locally and on AKS; one release to upgrade or roll back | Kustomize |
 | Infrastructure | Terraform (azurerm) | Everything in Azure is reproducible and can be destroyed with one command | Portal or CLI scripts |
 | Automatic stop | Logic App with a managed identity and a two-action custom role | Runs in Azure, independent of whoever started the demo; GitHub's scheduler proved too irregular for this | A scheduled GitHub workflow |
+| Monitoring | Prometheus and Grafana in the cluster (community Helm charts) | Ray Serve and the application export Prometheus metrics; nothing extra is billed and the dashboard is a file in the repository | Azure Monitor managed Prometheus with Azure Managed Grafana (a billed workspace for a demo that is mostly stopped) |
+| Load test | k6, run from a container | Arrival-rate scenarios (users arrive whether or not earlier requests finished); scripts in JavaScript | Locust |
 | Secrets | Key Vault with the CSI driver and workload identity | No secrets in the repository, images, chart values or environment variables | Kubernetes Secrets |
 | CI/CD | GitHub Actions with OIDC | No long-lived cloud credentials | Service-principal secrets |
 | Python tooling | uv, ruff, mypy (strict), pytest | Locked, fast, reproducible | |
@@ -418,6 +420,26 @@ tag counts as overdue. Budget alerts by e-mail are a second safeguard.
 Measured on the `free` profile: a start from the stopped state, including the deployment
 and the smoke test, takes about 9 minutes; a stop 2.5 minutes; an image build 9 minutes
 without and under 1 minute with the registry cache.
+
+## Observability
+
+Prometheus and Grafana run in the cluster (namespace `monitoring`, installed by
+`make platform-install`), neither reachable from the internet; `make grafana` opens
+Grafana through a port-forward. Prometheus reads three sources:
+
+- **The application**, through Ray's metrics port on the head pod: Ray Serve's own metrics
+  (requests, latency and errors per route, queue length per deployment) and the
+  application's (`serving/src/app/metrics.py`): detector time per image, time per summary
+  by source (`llm`, `template`, `no_damage`), detections per class, refused requests by
+  reason (rate limits, invalid uploads, model timeouts), logins, and for the live-traffic
+  page frames analysed or dropped per stream, inference time and viewers.
+- **The gateway**: Envoy's statistics, i.e. answers by status class per route and requests
+  refused by the gateway's own rate limit.
+- **The kubelets** (cAdvisor): CPU and memory per pod.
+
+The dashboard ([`deploy/platform/monitoring/dashboards/roadscan.json`](deploy/platform/monitoring/dashboards/roadscan.json))
+is provisioned from the repository. Data is kept on the node's disk for up to three days
+and is gone after the cluster is stopped; the demo has no alerting.
 
 To remove everything: `terraform destroy` in `infra/` (described in
 [`infra/README.md`](infra/README.md#destroy); documented, not yet exercised on this

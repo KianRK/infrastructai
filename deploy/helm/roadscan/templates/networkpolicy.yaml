@@ -43,6 +43,15 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ .Values.networkPolicy.operatorNamespace }}
+    {{- if .Values.metrics.enabled }}
+    # Prometheus reads the metrics port.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace }}
+      ports:
+        - port: 8080
+    {{- end }}
     # Ray pods talk to each other.
     - from:
         - podSelector:

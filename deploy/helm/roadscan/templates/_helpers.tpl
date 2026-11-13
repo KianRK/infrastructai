@@ -49,8 +49,17 @@ headGroupSpec:
     num-cpus: {{ .Values.ray.head.numCpus | quote }}
     object-store-memory: {{ mul (.Values.ray.head.objectStoreMemoryMi | int64) 1048576 | quote }}
     dashboard-host: 0.0.0.0
+    {{- if .Values.metrics.enabled }}
+    metrics-export-port: "8080"
+    {{- end }}
   template:
     metadata:
+      {{- if .Values.metrics.enabled }}
+      # Read by the Prometheus of deploy/platform: application and Ray Serve metrics.
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+      {{- end }}
       labels:
         {{- include "roadscan.labels" . | nindent 8 }}
         app.kubernetes.io/name: roadscan-serving
@@ -84,6 +93,9 @@ headGroupSpec:
             - { name: dashboard, containerPort: 8265 }
             - { name: client, containerPort: 10001 }
             - { name: serve, containerPort: 8000 }
+            {{- if .Values.metrics.enabled }}
+            - { name: metrics, containerPort: 8080 }
+            {{- end }}
           {{- with .Values.serve.mlflowTrackingUri }}
           env:
             - name: MLFLOW_TRACKING_URI

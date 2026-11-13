@@ -18,8 +18,11 @@ TAG ?= $(shell git rev-parse --short=12 HEAD)
 CHART := deploy/helm/roadscan
 # Hours until a demo started with `make demo-up` is stopped automatically.
 HOURS ?= 2
+# Load generator for `make loadtest` (k6 2.3.0) and its load profile (loadtest/analyze.js).
+K6_IMAGE := grafana/k6:2.3.0@sha256:2dd4756ec6e14e62778916e1eb850108e4b499304c02df56760fa0bdb0fba0b8
+PROFILE ?= ramp
 
-.PHONY: help install lint format typecheck test check data-download data-prepare train traffic-model media mlflow-ui serve-local serve-models frontend-dev docker-build compose-up compose-up-models compose-down model-fetch smoke-test infra-check infra-plan infra-apply chart-check platform-install deploy-local aks-credentials images-push deploy demo-up demo-down demo-status github-setup
+.PHONY: help install lint format typecheck test check data-download data-prepare train traffic-model media mlflow-ui serve-local serve-models frontend-dev docker-build compose-up compose-up-models compose-down model-fetch smoke-test infra-check infra-plan infra-apply chart-check platform-install deploy-local aks-credentials images-push deploy demo-up demo-down demo-status github-setup grafana loadtest
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  %-17s %s\n", $$1, $$2}'
@@ -119,11 +122,13 @@ infra-plan: ## Plan the Azure infrastructure (needs `az login` and infra/terrafo
 infra-apply: ## Apply the plan made by infra-plan (creates billable resources)
 	$(TERRAFORM) -chdir=infra apply tfplan
 
-chart-check: ## Lint the Helm chart and render it with the local and the AKS example values
+chart-check: ## Lint the Helm chart, render it with the local, AKS and load-test values, parse the dashboard
 	helm lint $(CHART) -f $(CHART)/values-local.yaml
 	helm lint $(CHART) -f $(CHART)/values-aks.example.yaml
 	helm template roadscan $(CHART) -f $(CHART)/values-local.yaml > /dev/null
 	helm template roadscan $(CHART) -f $(CHART)/values-aks.example.yaml > /dev/null
+	helm template roadscan $(CHART) -f $(CHART)/values-aks.example.yaml -f $(CHART)/values-loadtest.yaml > /dev/null
+	python3 -m json.tool deploy/platform/monitoring/dashboards/roadscan.json > /dev/null
 
 platform-install: ## Install Envoy Gateway, cert-manager and KubeRay into the current cluster (admin, once)
 	deploy/platform/install.sh
@@ -143,9 +148,9 @@ aks-credentials: ## Point kubectl at the AKS cluster created by Terraform (needs
 images-push: ## Build the serving and frontend images and push them to the Azure registry (TAG=commit)
 	scripts/push_images.sh "$$($(TERRAFORM) -chdir=infra output -raw acr_login_server)" $(TAG)
 
-deploy: ## Deploy the pushed images to AKS with values from the Terraform outputs (TAG=commit)
+deploy: ## Deploy the pushed images to AKS with values from the Terraform outputs (TAG=commit, VALUES=extra helm args)
 	set -o pipefail; $(TERRAFORM) -chdir=infra output -json | python3 scripts/aks_values.py \
-		| scripts/deploy.sh -f - --set image.tag=$(TAG)
+		| scripts/deploy.sh -f - --set image.tag=$(TAG) $(VALUES)
 
 demo-up: ## Start the demo cluster, deploy the newest pushed image, smoke test (HOURS=2 until the automatic stop)
 	scripts/demo.sh up $(HOURS)
@@ -160,6 +165,20 @@ demo-down: ## Stop the demo cluster (no compute cost while stopped)
 
 demo-status: ## Show whether the demo cluster runs and when it stops
 	scripts/demo.sh status
+
+grafana: ## Open Grafana of the current cluster at http://localhost:3000 (user admin)
+	@echo "Password: kubectl -n monitoring get secret grafana -o jsonpath='{.data.admin-password}' | base64 -d"
+	kubectl -n monitoring port-forward svc/grafana 3000:80
+
+loadtest: ## Load test a running deployment with k6 (URL=..., PHOTOS=dir with JPEGs; see loadtest/README.md)
+	@test -n "$(PHOTOS)" || { echo "PHOTOS=<directory with road photos> is required"; exit 1; }
+	mkdir -p loadtest/results
+	docker run --rm --network host --user "$$(id -u):$$(id -g)" \
+		-e ROADSCAN_DEMO_PASSWORD -e BASE_URL=$(or $(URL),http://localhost:8080) -e PROFILE=$(PROFILE) \
+		-v "$(CURDIR)/loadtest:/scripts:ro" -v "$(abspath $(PHOTOS)):/photos:ro" \
+		-v "$(CURDIR)/loadtest/results:/out" \
+		-e PHOTO_FILES="$$(cd $(PHOTOS) && ls *.jpg *.jpeg *.png 2>/dev/null | paste -sd,)" \
+		$(K6_IMAGE) run --summary-export=/out/summary.json --out csv=/out/results.csv /scripts/analyze.js
 
 github-setup: ## Write the repository secrets for the CD and Demo workflows from the Terraform outputs
 	scripts/github_setup.sh

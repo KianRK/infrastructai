@@ -124,6 +124,12 @@ serve:
     detector: 0.5
     describer: 0.75
     traffic: 0.5
+  # The application's rate limits (requests per window_seconds). Raised only for a load
+  # test (loadtest/README.md); the defaults are those in serving/src/app/settings.py.
+  limits:
+    login: { limit: 10, window_seconds: 300 } # per client address
+    analyzeSession: { limit: 6, window_seconds: 60 }
+    analyzeClient: { limit: 20, window_seconds: 60 }
   # MLflow tracking server holding the model registry (Terraform output
   # mlflow_tracking_uri). Required for models:/ URIs.
   mlflowTrackingUri: ""
@@ -146,3 +152,9 @@ networkPolicy:
   enabled: true
   gatewayNamespace: envoy-gateway-system
   operatorNamespace: kuberay-system
+  monitoringNamespace: monitoring
+
+metrics:
+  # Ray exports its own and the application's metrics on port 8080 of the head pod; the
+  # pod is annotated for the Prometheus installed by deploy/platform/install.sh.
+  enabled: true

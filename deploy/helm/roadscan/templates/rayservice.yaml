@@ -41,6 +41,9 @@ spec:
             cookie_secure: {{ .Values.tls.enabled }}
             # One proxy in front (the gateway), which appends the address it saw.
             trusted_proxy_hops: 1
+            login_limit: {{ toJson .Values.serve.limits.login }}
+            analyze_session_limit: {{ toJson .Values.serve.limits.analyzeSession }}
+            analyze_client_limit: {{ toJson .Values.serve.limits.analyzeClient }}
         deployments:
           - name: Api
             # The application's rate limiter counts in memory: exactly one replica.

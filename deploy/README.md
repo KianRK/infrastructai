@@ -53,7 +53,18 @@ flowchart LR
   containers run as non-root with all capabilities dropped and the default seccomp
   profile; the frontend's file system is read-only. No pod mounts a Kubernetes API token.
 - **Network policies.** The frontend accepts connections from the gateway only; the Ray
-  pod from the gateway (port 8000), the KubeRay operator and other Ray pods.
+  pod from the gateway (port 8000), the KubeRay operator, other Ray pods and Prometheus
+  (metrics port 8080 only).
+- **Monitoring.** `deploy/platform/install.sh` also installs Prometheus (server only: no
+  Alertmanager, node exporter or kube-state-metrics) and Grafana into the namespace
+  `monitoring`, which enforces the `restricted` Pod Security Standard as well. Prometheus
+  scrapes pods annotated with `prometheus.io/scrape` (the chart annotates the Ray head;
+  Envoy Gateway annotates its proxy) and the kubelets' cAdvisor endpoint, keeping only CPU
+  and memory per pod of the namespaces that matter. Storage is an `emptyDir` (3 days,
+  1.5 GB at most): no managed disk, and nothing survives `make demo-down`. Grafana has no
+  route; open it with `make grafana` (port-forward to `localhost:3000`, user `admin`, the
+  password is in the Secret `monitoring/grafana`). Its data source and the dashboard
+  `RoadScan` are provisioned from `deploy/platform/monitoring/`.
 
 ## Local cluster
 
@@ -72,7 +83,12 @@ make deploy-local
 kubectl -n envoy-gateway-system port-forward \
   "$(kubectl -n envoy-gateway-system get svc -l gateway.envoyproxy.io/owning-gateway-name=roadscan -o name)" 8080:80 &
 make smoke-test                               # http://localhost:8080, password roadscan-dev
+make grafana                                  # dashboard "RoadScan" at http://localhost:3000
 ```
+
+`minikube image load` does not replace an image that a running pod uses. To try a rebuilt
+image, give it a new tag and deploy with `scripts/deploy.sh -f
+deploy/helm/roadscan/values-local.yaml --set image.tag=<tag>`.
 
 The gateway reports `Programmed: False` on a cluster without a load balancer; the
 port-forward works regardless.
@@ -149,6 +165,14 @@ gateway (11 checks), `413` for a 12 MB upload, `429` after the rate limit, repea
 `helm upgrade` without changes, and the in-place replacement of the Ray cluster under the
 `restricted` Pod Security Standard. Memory was measured with the real models in the docker
 compose stack.
+
+Monitoring, verified on minikube (Kubernetes 1.35, Docker runtime) on 2026-11-13/14:
+`install.sh` installs and re-runs cleanly with Prometheus and Grafana under the
+`restricted` standard; all scrape targets are up (Ray head, Envoy proxy, cAdvisor); every
+dashboard query was run against Prometheus and returns data once the application has been
+used; Grafana's data source health check passes and the dashboard renders. minikube does
+not enforce network policies, so the Prometheus rule of the Ray pod's policy is tested on
+AKS only.
 
 Verified on AKS (Kubernetes 1.36, `free` profile, Sweden Central): the certificate was
 issued within three minutes of the first deployment, HTTP redirects to HTTPS, and the

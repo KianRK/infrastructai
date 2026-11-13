@@ -45,3 +45,6 @@ mlflow.db
 
 # Prepared videos of the live-traffic page (serving/media/prepare.py)
 serving/media/out/
+
+# Load-test output (make loadtest)
+loadtest/results/

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import logging
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -11,6 +12,7 @@ import numpy as np
 from numpy.typing import NDArray
 from ray import serve
 
+from app import metrics
 from app.model_store import resolve_model
 from app.schemas import DAMAGE_CLASS_NAMES, BoundingBox, DamageClass, Detection
 from app.settings import DetectorArgs, DummyDetectorArgs, OnnxDetectorArgs
@@ -110,4 +112,9 @@ class Detector:
     def detect(self, image: Image) -> DetectorOutput:
         # Sync method: Serve runs it in a thread pool, so inference does not block the
         # replica's event loop (health checks keep responding).
-        return DetectorOutput(self._backend.detect(image), self._backend.version)
+        started = time.perf_counter()
+        detections = self._backend.detect(image)
+        metrics.DETECTOR_SECONDS.observe(time.perf_counter() - started)
+        for detection in detections:
+            metrics.DETECTIONS.inc(tags={"damage_class": detection.damage_class.value})
+        return DetectorOutput(detections, self._backend.version)

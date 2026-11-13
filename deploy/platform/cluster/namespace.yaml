@@ -7,3 +7,11 @@ metadata:
   name: roadscan
   labels:
     pod-security.kubernetes.io/enforce: restricted
+---
+# Prometheus and Grafana (installed by ../install.sh).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    pod-security.kubernetes.io/enforce: restricted

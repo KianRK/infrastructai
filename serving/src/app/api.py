@@ -5,6 +5,7 @@ not recognise the upload parameter of the route method and answered HTTP 422.
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import math
@@ -18,6 +19,7 @@ from pydantic import BaseModel, Field
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
+from app import metrics
 from app.auth import (
     COOKIE_NAME,
     COOKIE_PATH,
@@ -78,8 +80,9 @@ fastapi_app = FastAPI(
 )
 
 
-def _enforce(decision: Decision) -> None:
+def _enforce(decision: Decision, limit: str) -> None:
     if not decision.allowed:
+        metrics.REJECTED.inc(tags={"reason": limit})
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             "too many requests",
@@ -97,6 +100,7 @@ async def within[T](call: Awaitable[T], seconds: float, what: str) -> T:
         return await asyncio.wait_for(call, seconds)
     except TimeoutError:
         log.error("%s did not answer within %.0f s", what, seconds)
+        metrics.REJECTED.inc(tags={"reason": "model_timeout"})
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             f"{what} is not available",
@@ -156,10 +160,12 @@ class Api:
     async def login(self, body: LoginRequest, request: Request, response: Response) -> None:
         # Every attempt counts, successful or not, so guessing is slowed down regardless
         # of what the attacker learns from the answers.
-        _enforce(self._login_limit.hit(self._client(request)))
+        _enforce(self._login_limit.hit(self._client(request)), "login_limit")
         if not self._auth.check_password(body.password):
             log.warning("failed login from %s", self._client(request))
+            metrics.LOGINS.inc(tags={"result": "wrong_password"})
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong password")
+        metrics.LOGINS.inc(tags={"result": "ok"})
         token, _ = self._auth.issue()
         response.set_cookie(
             COOKIE_NAME,
@@ -191,8 +197,8 @@ class Api:
         self, request: Request, file: Annotated[UploadFile, File()]
     ) -> AnalysisResponse:
         current = self._require_session(request)
-        _enforce(self._client_limit.hit(self._client(request)))
-        _enforce(self._session_limit.hit(current.id))
+        _enforce(self._client_limit.hit(self._client(request)), "client_limit")
+        _enforce(self._session_limit.hit(current.id), "session_limit")
 
         limits = self._args.upload
         try:
@@ -204,6 +210,7 @@ class Api:
             # without holding all of it.
             image = decode_upload(await file.read(limits.max_bytes + 1), limits)
         except UploadError as exc:
+            metrics.REJECTED.inc(tags={"reason": "invalid_upload"})
             raise HTTPException(exc.status, str(exc)) from exc
 
         detected: DetectorOutput = await within(
@@ -277,13 +284,19 @@ class Api:
     async def _sse(self) -> AsyncIterator[str]:
         deadline = time.monotonic() + self._args.traffic.connection_seconds
         yield "retry: 1000\n\n"  # reconnect delay for the browser, in milliseconds
+        # aclosing: the subscription ends with this connection, not whenever the garbage
+        # collector gets to it; until then it would still count towards max_viewers.
         try:
-            async for batch in self._traffic_events.subscribe():
-                if not batch:
-                    yield ": keep-alive\n\n"
-                for event in batch:
-                    yield f"data: {json.dumps(event, separators=(',', ':'))}\n\n"
-                if time.monotonic() >= deadline:
-                    return
+            async with contextlib.aclosing(self._traffic_events.subscribe()) as batches:
+                async for batch in batches:
+                    metrics.TRAFFIC_VIEWERS.set(self._traffic_events.subscribers)
+                    if not batch:
+                        yield ": keep-alive\n\n"
+                    for event in batch:
+                        yield f"data: {json.dumps(event, separators=(',', ':'))}\n\n"
+                    if time.monotonic() >= deadline:
+                        return
         except TooManySubscribersError:
             return  # lost the race for the last place; the browser retries
+        finally:
+            metrics.TRAFFIC_VIEWERS.set(self._traffic_events.subscribers)

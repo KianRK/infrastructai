@@ -88,3 +88,36 @@ def test_truncated_image_is_rejected(client: httpx.Client) -> None:
 def test_missing_file_field_is_a_validation_error(client: httpx.Client) -> None:
     response = client.post("/api/analyze", files={"other": ("a.png", b"x")})
     assert response.status_code == 422
+
+
+def test_application_metrics_reach_rays_metrics_endpoint(client: httpx.Client) -> None:
+    """The path Prometheus reads in the cluster: Ray's per-node metrics port."""
+    import time
+
+    import ray
+
+    assert analyze(client, encode(road_photo())).status_code == 200
+    port = ray.nodes()[0]["MetricsExportPort"]  # type: ignore[no-untyped-call]
+    wanted = (
+        "ray_roadscan_detector_inference_seconds_count",
+        'ray_roadscan_detections_total{damage_class="D40"',
+        'ray_roadscan_description_seconds_count{source="llm"',
+        'ray_roadscan_logins_total{result="ok"',
+    )
+    text = ""
+    deadline = time.monotonic() + 45  # Ray reports metrics every few seconds
+    while time.monotonic() < deadline:
+        text = httpx.get(f"http://127.0.0.1:{port}/metrics", timeout=10).text
+        if all(_has(text, name) for name in wanted):
+            return
+        time.sleep(2)
+    missing = [name for name in wanted if not _has(text, name)]
+    raise AssertionError(f"not exported: {missing}")
+
+
+def _has(text: str, wanted: str) -> bool:
+    # Ray adds labels of its own in front of ours, so match name and our label separately.
+    name, _, label = wanted.partition("{")
+    return any(
+        line.startswith(name + "{") and label.replace("{", "") in line for line in text.splitlines()
+    )

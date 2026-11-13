@@ -1,0 +1,139 @@
+# Values for the prometheus-community "prometheus" chart (see ../install.sh for the
+# version). Only the Prometheus server: no Alertmanager, no node exporter (a DaemonSet on
+# every node), no kube-state-metrics, no Pushgateway. Reachable inside the cluster only.
+
+alertmanager:
+  enabled: false
+kube-state-metrics:
+  enabled: false
+prometheus-node-exporter:
+  enabled: false
+prometheus-pushgateway:
+  enabled: false
+
+server:
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
+  # Kept on the node's disk: the data is gone after `make demo-down` (the nodes are
+  # deallocated). Enough for watching the demo and a load test; no managed disk to pay for.
+  persistentVolume:
+    enabled: false
+  emptyDir:
+    sizeLimit: 2Gi
+  retention: 3d
+  retentionSize: 1500MB
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 768Mi
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    fsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+
+configmapReload:
+  prometheus:
+    # The namespace enforces the "restricted" Pod Security Standard.
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+    resources:
+      requests:
+        cpu: 5m
+        memory: 16Mi
+      limits:
+        memory: 32Mi
+
+# The chart's default jobs are replaced by the two below.
+scrapeConfigs:
+  prometheus:
+    enabled: true
+  kubernetes-api-servers:
+    enabled: false
+  kubernetes-nodes:
+    enabled: false
+  kubernetes-nodes-cadvisor:
+    enabled: false
+  kubernetes-service-endpoints:
+    enabled: false
+  kubernetes-service-endpoints-slow:
+    enabled: false
+  prometheus-pushgateway:
+    enabled: false
+  kubernetes-services:
+    enabled: false
+  kubernetes-pods:
+    enabled: false
+  kubernetes-pods-slow:
+    enabled: false
+
+extraScrapeConfigs: |
+  # Pods that ask for it with the annotations prometheus.io/scrape, prometheus.io/port and
+  # (optionally) prometheus.io/path: the Ray head (application and Ray Serve metrics) and
+  # the Envoy proxy (requests as the gateway sees them).
+  - job_name: pods
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+      - source_labels: [__meta_kubernetes_pod_phase]
+        action: drop
+        regex: Pending|Succeeded|Failed
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^;]+);(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+    metric_relabel_configs:
+      # Labels Ray adds to every series that only change with a restart of the Ray cluster.
+      - action: labeldrop
+        regex: SessionName|Version
+  # CPU and memory per container from the kubelet, limited to the namespaces that matter.
+  - job_name: cadvisor
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      insecure_skip_verify: true
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    metrics_path: /metrics/cadvisor
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_node_name]
+        target_label: node
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        action: keep
+        regex: container_cpu_usage_seconds_total|container_memory_working_set_bytes
+      - source_labels: [namespace]
+        action: keep
+        regex: roadscan|monitoring|envoy-gateway-system
+      # One series per pod (the pod's cgroup, container=""). Per-container series exist
+      # with containerd (AKS) but not with every runtime (minikube with Docker), and
+      # keeping both would count every pod twice.
+      - source_labels: [container, pod]
+        action: keep
+        regex: ;.+

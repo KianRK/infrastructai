@@ -15,6 +15,7 @@ from collections import Counter, deque
 from collections.abc import Callable
 from typing import Any
 
+from app import metrics
 from app.settings import DummyTrafficArgs, OnnxTrafficArgs, TrafficArgs
 from app.traffic.detector import DummyTrafficBackend, OnnxTrafficBackend, TrafficBackend
 from app.traffic.schemas import StreamEvent, StreamInfo, StreamList, StreamStats, TrackedObject
@@ -103,12 +104,15 @@ class StreamWorker:
             return None, 0.0  # more frames in the file than max_fps asks for
         if now - due > MAX_LAG_SECONDS:
             self._stats.dropped_frames += 1
+            metrics.TRAFFIC_FRAMES.inc(tags={"stream": self.meta.id, "result": "dropped"})
             return None, 0.0
         self._last_analysed = stream_time
 
         started = time.perf_counter()
         observations = self._backend.detect(frame)
         elapsed = time.perf_counter() - started
+        metrics.TRAFFIC_SECONDS.observe(elapsed, tags={"stream": self.meta.id})
+        metrics.TRAFFIC_FRAMES.inc(tags={"stream": self.meta.id, "result": "analysed"})
         visible, confirmed = self._tracker.update(observations)
         self._stats.frame(now, elapsed, confirmed)
         event = StreamEvent(

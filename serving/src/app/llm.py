@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from ray import serve
 
+from app import metrics
 from app.prompt import (
     ESTIMATE_DISCLAIMER,
     NO_DAMAGE_DESCRIPTION,
@@ -177,4 +179,9 @@ class Describer:
         self._backend = create_backend(args)
 
     def describe(self, detections: list[Detection]) -> DescriberOutput:
-        return describe(self._backend, detections)
+        started = time.perf_counter()
+        output = describe(self._backend, detections)
+        metrics.DESCRIPTION_SECONDS.observe(
+            time.perf_counter() - started, tags={"source": output.source}
+        )
+        return output

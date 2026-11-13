@@ -1,0 +1,12 @@
+# Overlay for a load test from one machine (loadtest/README.md). All virtual users share
+# one client address, so the per-address limits would end the test within a minute.
+# Deploy with it, run the test, then deploy again without it.
+gateway:
+  rateLimit:
+    requests: 1200
+    unit: Minute
+serve:
+  limits:
+    login: { limit: 1000, window_seconds: 300 }
+    analyzeSession: { limit: 1000, window_seconds: 60 }
+    analyzeClient: { limit: 1000, window_seconds: 60 }
