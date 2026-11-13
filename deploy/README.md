@@ -154,3 +154,16 @@ smoke test passes over HTTPS, which covers the Key Vault mount, the workload ide
 the model download from Azure ML. Both application pods fit on the one 2-vCPU / 8 GB
 node. From a pod in another namespace, connections to the frontend and to Ray Serve time
 out, so the network policies are enforced.
+
+Verified in GitHub Actions (2026-11-13): the OIDC login, the image build (about 9 minutes
+without and under 1 minute with the registry cache), `Demo` stop, and after a 20-minute
+pause `Demo` start: the cluster start, the deployment of a new image and the smoke test
+(17 checks, including the live-traffic stream through the gateway) took 9 minutes together.
+`CD` against the running cluster deployed and passed the smoke test. With both video
+streams analysed, the Ray pod reported 5 analysed frames per second per stream, no dropped
+frames and about 50 ms per inference.
+
+Not verified: the automatic stop. In the first eight hours after the workflow was added,
+GitHub started the half-hourly schedule once, and no scheduled run arrived within 15
+minutes of a due stop time. Treat the schedule as a backstop and stop the demo yourself
+(`make demo-down` or `Demo` → stop).
