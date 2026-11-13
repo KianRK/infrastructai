@@ -46,7 +46,7 @@ applications:
         ray_actor_options: { num_cpus: 0.5 }
       - name: Describer
         num_replicas: 1
-        # Generation takes 10-25 s on two threads; one request at a time per replica.
+        # Generation takes a few seconds on two threads; one request at a time per replica.
         max_ongoing_requests: 1
         ray_actor_options: { num_cpus: 1 }
       - name: Traffic

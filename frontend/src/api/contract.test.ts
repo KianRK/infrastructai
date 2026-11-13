@@ -37,6 +37,11 @@ test('detection and box fields match the backend contract', () => {
   expect(keys(detection.box)).toEqual(keys(contract.$defs.BoundingBox.properties))
 })
 
+test('recommendation fields match the backend contract', () => {
+  const recommendation = analysisWithDamage.recommendations[0]
+  expect(keys(recommendation)).toEqual(keys(contract.$defs.Recommendation.properties))
+})
+
 test('damage classes match the backend contract', () => {
   const classes: Record<string, true> = { D00: true, D10: true, D20: true, D40: true }
   expect(keys(classes)).toEqual([...(contract.$defs.DamageClass.enum ?? [])].sort())

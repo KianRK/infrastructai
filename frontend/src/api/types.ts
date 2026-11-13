@@ -19,9 +19,28 @@ export interface Detection {
 
 export type DescriptionSource = 'llm' | 'template' | 'no_damage'
 
+export type Severity = 'low' | 'moderate' | 'high'
+
+/** What is usually done about one detected damage type; texts from curated notes. */
+export interface Recommendation {
+  damage_class: DamageClass
+  label: string
+  /** Rough, image-based rating computed by the backend. */
+  severity: Severity
+  /** The detector is unsure about this damage type. */
+  needs_verification: boolean
+  usual_repair: string
+  typical_causes: string
+}
+
 export interface AnalysisResponse {
   detections: Detection[]
+  /** Short summary of what was found. */
   description: string
+  /** One entry per detected damage type, most severe first. */
+  recommendations: Recommendation[]
+  /** null when nothing was detected. */
+  disclaimer: string | null
   description_source: DescriptionSource
   image_width: number
   image_height: number

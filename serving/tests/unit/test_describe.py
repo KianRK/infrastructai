@@ -4,7 +4,7 @@ import pytest
 
 from app.detector import make_detection
 from app.llm import DummyLLMBackend, describe
-from app.prompt import ESTIMATE_DISCLAIMER, NO_DAMAGE_DESCRIPTION, ChatMessage
+from app.prompt import ESTIMATE_DISCLAIMER, NO_DAMAGE_DESCRIPTION, ChatMessage, load_knowledge
 from app.schemas import DamageClass
 
 CRACK = [make_detection(DamageClass.D10, 0.8, (0.1, 0.4, 0.9, 0.5))]
@@ -24,12 +24,19 @@ class ScriptedBackend:
         return self.reply
 
 
-def test_grounded_answer_is_returned_as_llm_text() -> None:
-    backend = ScriptedBackend("  One transverse crack crosses the lane; seal it.\n")
+NOTE = load_knowledge()[DamageClass.D10]
+
+
+def test_grounded_answer_is_returned_with_the_reference_texts() -> None:
+    backend = ScriptedBackend("  One transverse crack crosses the lane.\n")
     result = describe(backend, CRACK)
-    assert result.description == (
-        f"One transverse crack crosses the lane; seal it.\n\n{ESTIMATE_DISCLAIMER}"
-    )
+
+    assert result.description == "One transverse crack crosses the lane."
+    assert result.disclaimer == ESTIMATE_DISCLAIMER
+    (item,) = result.recommendations
+    assert (item.damage_class, item.label) == (DamageClass.D10, "transverse crack")
+    assert (item.severity, item.needs_verification) == ("moderate", False)
+    assert (item.usual_repair, item.typical_causes) == (NOTE.measures, NOTE.causes)
     assert (result.source, result.model) == ("llm", "scripted")
 
 
@@ -38,6 +45,7 @@ def test_no_detections_never_calls_the_model() -> None:
     result = describe(backend, [])
     assert backend.calls == []
     assert (result.description, result.source) == (NO_DAMAGE_DESCRIPTION, "no_damage")
+    assert (result.recommendations, result.disclaimer) == ((), None)
 
 
 @pytest.mark.parametrize(
@@ -53,7 +61,9 @@ def test_unusable_answer_falls_back_to_the_template(reply: str | Exception) -> N
     result = describe(ScriptedBackend(reply), CRACK)
     assert result.source == "template"
     assert "one transverse crack" in result.description
-    assert "pothole" not in result.description.lower()
+    assert [item.usual_repair for item in result.recommendations] == [NOTE.measures]
+    text = result.description + " ".join(item.usual_repair for item in result.recommendations)
+    assert "pothole" not in text.lower()
 
 
 def test_dummy_backend_restates_the_findings() -> None:
@@ -63,7 +73,10 @@ def test_dummy_backend_restates_the_findings() -> None:
 
 
 def test_detected_damage_the_model_left_out_is_still_reported() -> None:
-    detections = [*CRACK, make_detection(DamageClass.D40, 0.9, (0.4, 0.7, 0.6, 0.9))]
+    detections = [
+        *CRACK,
+        make_detection(DamageClass.D40, 0.42, (0.4, 0.7, 0.6, 0.9)),
+    ]
     backend = ScriptedBackend("One transverse crack crosses the lane. The typical rep")
 
     result = describe(backend, detections)
@@ -71,3 +84,8 @@ def test_detected_damage_the_model_left_out_is_still_reported() -> None:
     assert result.source == "llm"
     assert result.description.startswith("One transverse crack crosses the lane. The detector")
     assert "found one pothole" in result.description
+    # One entry per detected damage type, most severe first, whatever the model wrote.
+    assert [(item.damage_class, item.needs_verification) for item in result.recommendations] == [
+        (DamageClass.D40, True),
+        (DamageClass.D10, False),
+    ]

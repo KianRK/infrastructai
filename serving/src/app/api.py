@@ -219,6 +219,8 @@ class Api:
         return AnalysisResponse(
             detections=detected.detections,
             description=described.description,
+            recommendations=list(described.recommendations),
+            disclaimer=described.disclaimer,
             description_source=described.source,
             image_width=image.width,
             image_height=image.height,

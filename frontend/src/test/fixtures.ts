@@ -15,7 +15,26 @@ export const analysisWithDamage: AnalysisResponse = {
       box: { x_min: 0.1, y_min: 0.02, x_max: 0.18, y_max: 0.9 },
     },
   ],
-  description: 'One pothole and one longitudinal crack were found.\n\nSeverity is approximate.',
+  description: 'One pothole and one longitudinal crack were found.',
+  recommendations: [
+    {
+      damage_class: 'D40',
+      label: 'pothole',
+      severity: 'moderate',
+      needs_verification: false,
+      usual_repair: 'Fill the hole with cold mix, then patch it durably.',
+      typical_causes: 'Water entering a weakened surface.',
+    },
+    {
+      damage_class: 'D00',
+      label: 'longitudinal crack',
+      severity: 'low',
+      needs_verification: true,
+      usual_repair: 'Clean and seal the crack.',
+      typical_causes: 'Poorly bonded construction joints.',
+    },
+  ],
+  disclaimer: 'Severity is approximate.',
   description_source: 'llm',
   image_width: 640,
   image_height: 480,
@@ -27,6 +46,8 @@ export const analysisWithoutDamage: AnalysisResponse = {
   ...analysisWithDamage,
   detections: [],
   description: 'No road damage was detected in this image.',
+  recommendations: [],
+  disclaimer: null,
   description_source: 'no_damage',
 }
 

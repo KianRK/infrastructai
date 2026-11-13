@@ -33,9 +33,10 @@ the demo password, which I share on request.
 1. A user logs in with a shared demo password and uploads a photo of a road.
 2. A YOLO26s detector, fine-tuned on RDD2022, marks four kinds of damage: longitudinal
    cracks (D00), transverse cracks (D10), alligator cracks (D20) and potholes (D40).
-3. A small language model (Qwen2.5-1.5B) writes an assessment. It never sees the photo,
-   only a summary of the detections and curated notes on the detected damage types, and
-   its answer is checked against the detections before it is returned.
+3. A small language model (Qwen2.5-1.5B) writes a short summary. It never sees the photo,
+   only a summary of the detections, and its answer is checked against the detections
+   before it is returned. Below the summary, each detected damage type gets a
+   recommended action: the usual repair and typical causes from curated reference notes.
 4. The browser shows the photo with boxes, labels and confidences next to the text.
 5. On the live-traffic page one shared analysis per video runs on the server; every
    viewer sees the same boxes and counts.
@@ -243,10 +244,10 @@ What to keep in mind:
 
 **Language model.** Qwen2.5-1.5B-Instruct (Alibaba Cloud, Apache-2.0), quantised to
 4 bits (Q4_K_M GGUF), pinned by revision and SHA-256. It is not fine-tuned. Its role is
-to phrase facts it is given; the grounding checks are described under
-[Serving](#serving). The severity it mentions (low, moderate, high) comes from a rule
+to phrase the detection results as a short summary; the grounding checks are described
+under [Serving](#serving). Repairs and causes are not generated. The severity it mentions (low, moderate, high) comes from a rule
 in the code based on box size and count; it is not measured and was not validated.
-Generation takes 9 to 23 seconds on two CPU threads.
+A summary takes 1 to 4 seconds on two threads of the development laptop's CPU.
 
 **Traffic detector.** YOLO26n with the published COCO weights (Ultralytics, AGPL-3.0),
 not trained or evaluated here. Counts on the live-traffic page are estimates without
@@ -273,12 +274,17 @@ model registry) and start `make serve-models` in another (after `make traffic-mo
 - **LLM:** Qwen2.5-1.5B-Instruct (Apache-2.0), 4-bit GGUF via llama.cpp on CPU; vLLM on a
   GPU node is selectable with `llm.backend: vllm`.
 - **Grounding:** the LLM never sees the image. It gets an aggregated summary of the
-  detections (count, confidence, share of the image, position, a heuristic severity) and the
-  curated reference notes (`serving/src/app/knowledge.yaml`) of the detected classes only.
-  Its answer is checked: if it names a damage class that was not detected, or fails, a
-  deterministic template text is returned instead (`description_source: "template"`); a
-  detected class it leaves out is appended from the reference notes. With no detections the
-  LLM is not called at all.
+  detections (count, confidence, share of the image, position, a heuristic severity) and
+  writes a summary of at most three sentences. Its answer is checked: if it names a
+  damage class that was not detected, or fails, a deterministic template text is returned
+  instead (`description_source: "template"`); a detected class it leaves out is appended.
+  With no detections the LLM is not called at all.
+- **Recommended actions:** the response carries one entry per detected damage type
+  (most severe first) with its severity, a flag when the detector is unsure, the usual
+  repair and the typical causes. These texts come verbatim from the curated reference
+  notes (`serving/src/app/knowledge.yaml`), not from the model. In trials the model
+  either copied the notes word for word or shortened them into statements the notes do
+  not make ("clean and seal wide cracks"), so it is no longer asked to.
 
 The response schema is defined with Pydantic (`serving/src/app/schemas.py`) and committed as
 JSON Schema in `serving/contract/`; a contract test fails when the two diverge.
@@ -329,8 +335,8 @@ make frontend-dev   # terminal 2: http://localhost:5173, password "roadscan-dev"
 ```
 
 React + TypeScript + Vite. Login screen, image upload with client-side validation (JPEG, PNG,
-WebP; 10 MB), the photo with bounding boxes and labels, the written assessment with its
-source (language model or template), and loading, error and session-expired states. Boxes use
+WebP; 10 MB), the photo with bounding boxes and labels, the assessment (summary, then recommended
+actions per damage type) with its source (language model or template), and loading, error and session-expired states. Boxes use
 the API's relative coordinates, so they stay aligned at any display size. The second page
 (`#traffic`) shows the two analysed videos with their statistics.
 

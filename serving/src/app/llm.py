@@ -13,15 +13,18 @@ from app.prompt import (
     ESTIMATE_DISCLAIMER,
     NO_DAMAGE_DESCRIPTION,
     ChatMessage,
+    Finding,
     build_messages,
-    clean_answer,
-    finding_text,
+    clean_summary,
+    finding_summary,
+    needs_verification,
+    reference_note,
     summarise,
-    template_description,
+    template_summary,
     ungrounded_classes,
     unmentioned_findings,
 )
-from app.schemas import DescriptionSource, Detection
+from app.schemas import DescriptionSource, Detection, Recommendation
 from app.settings import DummyLLMArgs, LlamaCppArgs, LLMArgs, VllmArgs
 
 log = logging.getLogger("ray.serve")
@@ -30,6 +33,8 @@ log = logging.getLogger("ray.serve")
 @dataclass(frozen=True)
 class DescriberOutput:
     description: str
+    recommendations: tuple[Recommendation, ...]
+    disclaimer: str | None
     source: DescriptionSource
     model: str
 
@@ -115,33 +120,55 @@ def create_backend(args: LLMArgs) -> LLMBackend:
             return VllmBackend(args)
 
 
+def _recommendations(findings: Sequence[Finding]) -> tuple[Recommendation, ...]:
+    """One entry per finding, with the texts of its reference note."""
+    return tuple(
+        Recommendation(
+            damage_class=finding.damage_class,
+            label=finding.label,
+            severity=finding.severity,
+            needs_verification=needs_verification(finding),
+            usual_repair=reference_note(finding).measures,
+            typical_causes=reference_note(finding).causes,
+        )
+        for finding in findings
+    )
+
+
 def describe(backend: LLMBackend, detections: Sequence[Detection]) -> DescriberOutput:
     """Describe the detections, never inventing damage.
 
     - No detections: fixed text, the model is not called at all.
     - Model fails, returns nothing, or mentions an undetected damage class: deterministic
-      template text built from the same findings.
+      summary built from the same findings.
     - Model leaves out a detected class (typically cut off by the token limit): the
-      deterministic text for that finding is appended, so nothing detected goes unreported.
+      deterministic sentence for that finding is appended, so nothing detected goes
+      unreported.
+
+    The recommendations never depend on the model: one per detected damage type, from the
+    reference notes.
     """
     if not detections:
-        return DescriberOutput(NO_DAMAGE_DESCRIPTION, "no_damage", backend.model)
+        return DescriberOutput(NO_DAMAGE_DESCRIPTION, (), None, "no_damage", backend.model)
 
     findings = summarise(detections)
     try:
-        text = clean_answer(backend.generate(build_messages(findings)))
+        text = clean_summary(backend.generate(build_messages(findings)))
     except Exception:
-        log.exception("LLM generation failed, using the template description")
+        log.exception("LLM generation failed, using the template summary")
         text = ""
     if text and (invented := ungrounded_classes(text, findings)):
         log.warning("LLM mentioned undetected damage %s, using the template", invented)
         text = ""
+    source: DescriptionSource = "llm" if text else "template"
     if not text:
-        return DescriberOutput(template_description(findings), "template", backend.model)
+        text = template_summary(findings)
     for finding in unmentioned_findings(text, findings):
         log.warning("LLM left out %s, appending the reference text", finding.label)
-        text = f"{text} {finding_text(finding)}"
-    return DescriberOutput(f"{text}\n\n{ESTIMATE_DISCLAIMER}", "llm", backend.model)
+        text = f"{text} {finding_summary(finding)}"
+    return DescriberOutput(
+        text, _recommendations(findings), ESTIMATE_DISCLAIMER, source, backend.model
+    )
 
 
 @serve.deployment

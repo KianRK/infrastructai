@@ -98,7 +98,17 @@ test('shows a loading state, then boxes, labels and the description', async () =
   expect(within(boxes[0]).getByText('pothole 91%')).toBeInTheDocument()
   expect(within(boxes[1]).getByText('longitudinal crack 67%')).toBeInTheDocument()
   expect(screen.getByText('One pothole and one longitudinal crack were found.')).toBeInTheDocument()
-  expect(screen.getByText(/Written by a language model/)).toHaveTextContent(
+  const actions = within(screen.getByRole('list')).getAllByRole('listitem')
+  expect(actions).toHaveLength(2)
+  expect(actions[0]).toHaveTextContent('pothole')
+  expect(actions[0]).toHaveTextContent('moderate severity')
+  expect(actions[0]).toHaveTextContent('Fill the hole with cold mix, then patch it durably.')
+  expect(actions[0]).toHaveTextContent('Water entering a weakened surface.')
+  expect(actions[0]).not.toHaveTextContent('verify on site')
+  expect(actions[1]).toHaveTextContent('verify on site')
+  expect(actions[1]).toHaveTextContent('check on site before planning a repair')
+  expect(screen.getByText('Severity is approximate.')).toBeInTheDocument()
+  expect(screen.getByText(/written by a language model/)).toHaveTextContent(
     'Model: qwen2.5-1.5b-instruct-q4_k_m.',
   )
   expect(screen.queryByRole('status')).not.toBeInTheDocument()

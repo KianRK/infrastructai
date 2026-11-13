@@ -27,6 +27,9 @@ DAMAGE_CLASS_NAMES: dict[DamageClass, str] = {
 # unavailable or its answer failed the grounding check). "no_damage": nothing detected.
 DescriptionSource = Literal["llm", "template", "no_damage"]
 
+# Rough, image-based rating computed in code (app.prompt.estimate_severity).
+Severity = Literal["low", "moderate", "high"]
+
 
 class _Schema(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -58,9 +61,31 @@ class Detection(_Schema):
     box: BoundingBox
 
 
+class Recommendation(_Schema):
+    """What is usually done about one detected damage type.
+
+    The texts come verbatim from the curated reference notes, not from the language model.
+    """
+
+    damage_class: DamageClass
+    label: str
+    severity: Severity
+    needs_verification: bool = Field(
+        description="The detector is unsure about this damage type; check it on site."
+    )
+    usual_repair: str
+    typical_causes: str
+
+
 class AnalysisResponse(_Schema):
     detections: list[Detection]
-    description: str = Field(description="Prose summary grounded in the detections.")
+    description: str = Field(description="Short summary grounded in the detections.")
+    recommendations: list[Recommendation] = Field(
+        description="One entry per detected damage type, most severe first."
+    )
+    disclaimer: str | None = Field(
+        description="Limits of the assessment; null when nothing was detected."
+    )
     description_source: DescriptionSource
     image_width: int = Field(gt=0)
     image_height: int = Field(gt=0)

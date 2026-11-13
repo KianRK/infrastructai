@@ -5,11 +5,13 @@ from app.prompt import (
     CLASS_KEYWORDS,
     build_messages,
     clean_answer,
+    clean_summary,
     estimate_severity,
     load_knowledge,
     overall_severity,
+    reference_note,
     summarise,
-    template_description,
+    template_summary,
     ungrounded_classes,
     unmentioned_findings,
 )
@@ -91,7 +93,7 @@ def test_prompt_contains_the_findings_as_stated_facts() -> None:
         "  note: uncertain detection, should be verified on site\n"
     ) in user["content"]
     assert "Overall estimated severity: high" in user["content"]
-    assert user["content"].rstrip().endswith("without any formatting.")
+    assert user["content"].endswith("at most three short sentences of plain prose.")
 
 
 def test_prompt_never_names_damage_that_was_not_detected() -> None:
@@ -104,11 +106,13 @@ def test_prompt_never_names_damage_that_was_not_detected() -> None:
                 assert not any(word in text for word in keywords), (detected, other)
 
 
-def test_prompt_includes_reference_notes_only_for_detected_classes() -> None:
+def test_prompt_carries_no_causes_or_repairs() -> None:
+    # They are shown from the reference notes, so the model has nothing to paraphrase.
     knowledge = load_knowledge()
-    _, user = build_messages(summarise([det(DamageClass.D20, 0.9)]))
-    assert knowledge[DamageClass.D20].causes in user["content"]
-    assert knowledge[DamageClass.D40].causes not in user["content"]
+    system, user = build_messages(summarise([det(DamageClass.D20, 0.9)]))
+    text = system["content"] + user["content"]
+    assert knowledge[DamageClass.D20].measures not in text
+    assert knowledge[DamageClass.D20].causes not in text
 
 
 def test_no_findings_must_not_reach_the_model() -> None:
@@ -134,16 +138,25 @@ def test_grounding_check_flags_undetected_damage_only() -> None:
     assert ungrounded_classes(invented, findings) == [DamageClass.D40]
 
 
-def test_template_description_is_grounded_and_states_its_limits() -> None:
+def test_template_summary_is_grounded_and_flags_uncertain_findings() -> None:
     findings = summarise(POTHOLES_AND_CRACK)
-    text = template_description(findings)
+    text = template_summary(findings)
 
     assert "two potholes" in text
     assert "one longitudinal crack" in text
     assert "uncertain and should be verified" in text
     assert "Overall estimated severity: high" in text
-    assert "does not replace an on-site inspection" in text
     assert ungrounded_classes(text, findings) == []
+
+
+def test_reference_note_belongs_to_the_finding() -> None:
+    (crack,) = summarise([det(DamageClass.D10, 0.9)])
+    assert reference_note(crack) is load_knowledge()[DamageClass.D10]
+
+
+def test_summary_label_is_removed() -> None:
+    assert clean_summary("**Summary:** One pothole was found.") == "One pothole was found."
+    assert clean_summary("One pothole was found.") == "One pothole was found."
 
 
 def test_answer_cleanup_removes_markdown_and_input_labels() -> None:

@@ -77,6 +77,51 @@
       ],
       "title": "Detection",
       "type": "object"
+    },
+    "Recommendation": {
+      "additionalProperties": false,
+      "description": "What is usually done about one detected damage type.\n\nThe texts come verbatim from the curated reference notes, not from the language model.",
+      "properties": {
+        "damage_class": {
+          "$ref": "#/$defs/DamageClass"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "low",
+            "moderate",
+            "high"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "needs_verification": {
+          "description": "The detector is unsure about this damage type; check it on site.",
+          "title": "Needs Verification",
+          "type": "boolean"
+        },
+        "usual_repair": {
+          "title": "Usual Repair",
+          "type": "string"
+        },
+        "typical_causes": {
+          "title": "Typical Causes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "damage_class",
+        "label",
+        "severity",
+        "needs_verification",
+        "usual_repair",
+        "typical_causes"
+      ],
+      "title": "Recommendation",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -89,9 +134,29 @@
       "type": "array"
     },
     "description": {
-      "description": "Prose summary grounded in the detections.",
+      "description": "Short summary grounded in the detections.",
       "title": "Description",
       "type": "string"
+    },
+    "recommendations": {
+      "description": "One entry per detected damage type, most severe first.",
+      "items": {
+        "$ref": "#/$defs/Recommendation"
+      },
+      "title": "Recommendations",
+      "type": "array"
+    },
+    "disclaimer": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Limits of the assessment; null when nothing was detected.",
+      "title": "Disclaimer"
     },
     "description_source": {
       "enum": [
@@ -124,6 +189,8 @@
   "required": [
     "detections",
     "description",
+    "recommendations",
+    "disclaimer",
     "description_source",
     "image_width",
     "image_height",

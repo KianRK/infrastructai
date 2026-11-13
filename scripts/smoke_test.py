@@ -23,6 +23,8 @@ import zlib
 REQUIRED_FIELDS = {
     "detections",
     "description",
+    "recommendations",
+    "disclaimer",
     "description_source",
     "image_width",
     "image_height",

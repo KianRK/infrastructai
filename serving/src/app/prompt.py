@@ -2,8 +2,13 @@
 
 The language model never sees the image. It receives (1) an aggregated summary of the
 detector output and (2) the reference notes of the detected classes only, and is told to
-use nothing else. ``ungrounded_classes`` checks its answer, and ``template_description``
-is the deterministic text used when the model is unavailable or fails that check.
+use nothing else. It writes only a short summary of what was found; ``ungrounded_classes``
+checks it, and ``template_summary`` is the deterministic text used when the model is
+unavailable, fails that check or leaves something out.
+
+Causes and repairs are not written by the model. They are shown per damage type, verbatim
+from the reference notes: in trials the model either copied the notes word for word or
+shortened them into statements the notes do not make.
 """
 
 from __future__ import annotations
@@ -18,9 +23,8 @@ from typing import Literal, TypedDict
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-from app.schemas import DAMAGE_CLASS_NAMES, DamageClass, Detection
+from app.schemas import DAMAGE_CLASS_NAMES, DamageClass, Detection, Severity
 
-Severity = Literal["low", "moderate", "high"]
 _SEVERITY_ORDER: tuple[Severity, ...] = ("low", "moderate", "high")
 
 
@@ -155,19 +159,17 @@ def _finding_block(number: int, finding: Finding) -> str:
 
 
 SYSTEM_PROMPT = """\
-You write short road-condition notes for a road maintenance team, based on the output of \
-an automated damage detector.
+You write the summary line of a road-condition note for a road maintenance team, based on \
+the output of an automated damage detector.
 
 Rules:
 1. Describe only the damage types listed under "Findings". Never mention any other type \
 of damage, and never add details (sizes, depths, measurements, weather, place names) that \
 are not given.
-2. For each finding, say what was found and where in the image, state its estimated \
-severity exactly as given, then give its typical causes and the usual repair.
-3. Take causes and repairs only from the "Reference notes". Do not add other technical \
-claims and do not explain why a severity was assigned.
-4. If a finding carries a note that it is uncertain, say that it should be verified.
-5. Write plain prose in one or two paragraphs, at most 160 words. No lists, no headings."""
+2. Say what was found, where in the image, and the estimated severity exactly as given. \
+Mention when a finding is uncertain and should be verified on site.
+3. Stop there: causes and repairs are listed separately and are not part of the summary.
+4. Plain prose, at most three short sentences. No lists, no headings."""
 
 # Appended by code rather than requested from the model, so it is always present.
 ESTIMATE_DISCLAIMER = (
@@ -181,15 +183,8 @@ NO_DAMAGE_DESCRIPTION = (
 )
 
 
-def _closing_instruction(finding_count: int) -> str:
-    # Repeated at the very end because small models weigh the latest instruction most.
-    # Fewer sentences per finding when there are many keeps the answer within the token
-    # budget (and the response time on CPU bounded).
-    sentences = "three" if finding_count == 1 else "two"
-    return (
-        f"Write the note now: about {sentences} sentences per finding, as one plain "
-        "paragraph without any formatting."
-    )
+# Repeated at the very end because small models weigh the latest instruction most.
+_CLOSING_INSTRUCTION = "Write the summary now: at most three short sentences of plain prose."
 
 
 _SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
@@ -214,24 +209,11 @@ def clean_answer(text: str) -> str:
 def build_messages(findings: Sequence[Finding]) -> list[ChatMessage]:
     if not findings:
         raise ValueError("no findings: the no-damage case must not be sent to the model")
-    knowledge = load_knowledge()
-    notes = []
-    for finding in findings:
-        note = knowledge[finding.damage_class]
-        notes.append(
-            f"[{finding.label}]\n"
-            f"Appearance: {note.appearance}\n"
-            f"Typical causes: {note.causes}\n"
-            f"Typical repair: {note.measures}"
-        )
     user = (
         "Findings (this is all the damage in the image):\n"
         + "\n".join(_finding_block(i, f) for i, f in enumerate(findings, start=1))
         + f"\nOverall estimated severity: {overall_severity(findings)}\n\n"
-        + "Reference notes:\n"
-        + "\n\n".join(notes)
-        + "\n\n"
-        + _closing_instruction(len(findings))
+        + _CLOSING_INSTRUCTION
     )
     return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]
 
@@ -253,25 +235,40 @@ def unmentioned_findings(text: str, findings: Sequence[Finding]) -> list[Finding
     return [f for f in findings if not any(w in lowered for w in CLASS_KEYWORDS[f.damage_class])]
 
 
-def finding_text(finding: Finding) -> str:
-    """Deterministic sentences for one finding, from the reference notes."""
-    note = load_knowledge()[finding.damage_class]
+_SUMMARY_LABEL = re.compile(r"(?i)^[\s*#_]*summary[\s*_]*:[\s*_]*")
+
+
+def clean_summary(text: str) -> str:
+    """``clean_answer`` without a leading "Summary:" label the model may put in front."""
+    return clean_answer(_SUMMARY_LABEL.sub("", text, count=1))
+
+
+def needs_verification(finding: Finding) -> bool:
+    return _confidence_level(finding.max_confidence) == "low"
+
+
+def finding_summary(finding: Finding) -> str:
+    """Deterministic sentence for one finding."""
     verify = (
-        " This detection is uncertain and should be verified."
-        if finding.max_confidence < 0.5
+        " This detection is uncertain and should be verified on site."
+        if needs_verification(finding)
         else ""
     )
     return (
         f"The detector found {_plural(finding.count, finding.label, words=True)} "
         f"({', '.join(finding.positions)} of the image), with an estimated severity of "
-        f"{finding.severity}.{verify} Typical causes: {note.causes} "
-        f"Typical repair: {note.measures}"
+        f"{finding.severity}.{verify}"
     )
 
 
-def template_description(findings: Sequence[Finding]) -> str:
-    """Deterministic description assembled from the findings and the reference notes."""
-    parts = [finding_text(finding) for finding in findings]
-    parts.append(f"Overall estimated severity: {overall_severity(findings)}.")
-    parts.append(ESTIMATE_DISCLAIMER)
+def template_summary(findings: Sequence[Finding]) -> str:
+    """Deterministic summary assembled from the findings."""
+    parts = [finding_summary(finding) for finding in findings]
+    if len(findings) > 1:
+        parts.append(f"Overall estimated severity: {overall_severity(findings)}.")
     return " ".join(parts)
+
+
+def reference_note(finding: Finding) -> ReferenceNote:
+    """The curated note of the finding's damage class."""
+    return load_knowledge()[finding.damage_class]
