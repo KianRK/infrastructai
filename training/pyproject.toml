@@ -28,6 +28,10 @@ azure = ["azureml-mlflow>=1.62.0.post6"]
 
 [tool.uv]
 environments = ["sys_platform == 'linux'"]
+# Rebuild the project when any of its files change, not only pyproject.toml (uv's
+# default). Without this the image builds, which install the project non-editable with a
+# persistent uv cache, reused the previously built wheel after source-only changes.
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*" }]
 conflicts = [[{ extra = "cpu" }, { extra = "gpu" }]]
 
 [tool.uv.sources]
