@@ -164,3 +164,9 @@ pause `Demo` start: the cluster start, the deployment of a new image and the smo
 `CD` against the running cluster deployed and passed the smoke test. With both video
 streams analysed, the Ray pod reported 5 analysed frames per second per stream, no dropped
 frames and about 50 ms per inference.
+
+Automatic stop, verified 2026-11-13: started through `Demo` → start, the stop time was on
+the cluster before it started; a Logic App run during the start left the cluster alone
+(Azure reports power state `Running` with provisioning state `Starting` then). With the
+stop time moved into the past, the next timed run stopped the cluster within its
+15-minute interval, and `terraform plan` showed no changes afterwards.
