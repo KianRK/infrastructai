@@ -106,6 +106,8 @@ After the first apply:
 
 ## Cost
 
+Prices and a monthly estimate are in the [main README](../README.md#cost).
+
 - **Running** (`free` profile): two `Standard_D2ds_v7` nodes, plus the items below.
 - **Stopped** (`az aks stop --resource-group rg-roadscan --name aks-roadscan`): the control
   plane and all nodes are deallocated and not billed. Node OS disks are ephemeral, so no
@@ -141,8 +143,6 @@ free again.
 
 ## Assumptions and open points
 
-These could not be verified without an active subscription:
-
 - **Free Trial limits.** Checked on a Free Trial subscription (2026-11): 4 vCPUs per
   region; `Standard_D2ds_v7` is offered in `swedencentral`, `Standard_D2s_v3` is not
   offered in `westeurope`. Other regions and dates may differ; the commands under
@@ -150,14 +150,9 @@ These could not be verified without an active subscription:
 - **Region.** `westeurope` does not accept customers who are new to the region
   (`RequestDisallowedByAzure ... not accepting new customers`,
   [details](https://aka.ms/locationineligible)); hence the default `swedencentral`.
-- **Ephemeral OS disk on NVMe.** `Standard_D2ds_v7` has no cache disk; its ephemeral OS
-  disk is placed on the local NVMe disk. If AKS rejects that, set
-  `os_disk_type = "Managed"` (a 48 GB disk per node is then billed also while stopped).
-- **Budget on a Free Trial.** Cost Management lists the Free Trial offer as supported; if
-  creating the budget fails, set `budget_enabled = false`.
-- **Cluster stop/start by GitHub Actions.** The workflow identity has the
-  `Azure Kubernetes Service Contributor Role`; that it covers stop and start is checked
-  with the deployment workflow.
-- **Resource provider registration.** The provider registers the usual set
-  (`resource_provider_registrations = "extended"`); on a new subscription the first
-  apply may need a second run if a registration is still in progress.
+- **Verified by applying** (Free Trial, `swedencentral`, 2026-11): AKS accepts the
+  ephemeral OS disk on the local NVMe disk of `Standard_D2ds_v7`; the budget can be
+  created; the workflow identity's `Azure Kubernetes Service Contributor Role` covers
+  stop and start.
+- **Not exercised:** `terraform destroy`, and the `standard` profile (its VM sizes were
+  not checked against a pay-as-you-go subscription).

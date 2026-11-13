@@ -1,13 +1,124 @@
 # RoadScan
 
-End-to-end road damage analysis: upload a road photo, an object detector trained on
-RDD2022 localises the damage, and a small self-hosted LLM describes it. A second page
-shows two traffic videos that the server analyses like camera feeds: road users are
-detected, tracked and counted while you watch. Served with Ray Serve on Azure Kubernetes
-Service.
+[![CI](https://github.com/KianRK/infrastructai/actions/workflows/ci.yml/badge.svg)](https://github.com/KianRK/infrastructai/actions/workflows/ci.yml)
 
-> **Status: work in progress.** Milestone 11 of 12 (deployed on AKS; CD pipeline and on-demand start/stop). The full
-> README (architecture, deployment, cost, model card) is written in the final milestone.
+End-to-end road damage analysis: upload a road photo, an object detector trained on
+RDD2022 localises the damage, and a small self-hosted language model describes it. A
+second page shows two traffic videos that the server analyses like camera feeds: road
+users are detected, tracked and counted while you watch. Trained on a laptop GPU, served
+with Ray Serve on Azure Kubernetes Service, provisioned with Terraform and deployed by
+GitHub Actions.
+
+![Login, analysis of a road photo, and the live-traffic page](docs/demo.gif)
+
+*Recorded against a local run with the real models; the wait for the analysis is
+shortened. Photo: RDD2022 (CC BY 4.0); videos: Wikimedia Commons, credited under
+[Live traffic](#live-traffic).*
+
+The Azure deployment is started on demand and is normally switched off to save cost
+(see [Cost](#cost)); the recording above shows what it serves.
+
+**Contents:** [Overview](#overview) · [Architecture](#architecture) ·
+[Technology choices](#technology-choices) · [Repository layout](#repository-layout) ·
+[Local setup](#local-setup) · [Data pipeline](#data-pipeline) · [Training](#training) ·
+[Model card](#model-card) · [Serving](#serving) · [Live traffic](#live-traffic) ·
+[Frontend](#frontend) · [Containers](#containers) · [Deployment](#deployment) ·
+[Cost](#cost) · [Security](#security) · [Limitations](#limitations) · [Licences](#licences)
+
+## Overview
+
+1. A user logs in with a shared demo password and uploads a photo of a road.
+2. A YOLO26s detector, fine-tuned on RDD2022, marks four kinds of damage: longitudinal
+   cracks (D00), transverse cracks (D10), alligator cracks (D20) and potholes (D40).
+3. A small language model (Qwen2.5-1.5B) writes an assessment. It never sees the photo,
+   only a summary of the detections and curated notes on the detected damage types, and
+   its answer is checked against the detections before it is returned.
+4. The browser shows the photo with boxes, labels and confidences next to the text.
+5. On the live-traffic page one shared analysis per video runs on the server; every
+   viewer sees the same boxes and counts.
+
+The project is a portfolio piece. Its subject is the path from data to a deployed,
+secured and cost-controlled service; the detector's accuracy is secondary and is
+reported as measured in the [model card](#model-card).
+
+## Architecture
+
+At run time:
+
+```mermaid
+flowchart LR
+  user([Browser])
+  subgraph aks["AKS cluster"]
+    gw["Envoy Gateway<br/>TLS, rate limit, body limit"]
+    fe["Frontend<br/>nginx, static React app"]
+    subgraph ray["Ray Serve pod (KubeRay)"]
+      api["Api<br/>FastAPI: login, limits, upload checks"]
+      det["Detector<br/>YOLO26s, ONNX Runtime"]
+      llm["Describer<br/>Qwen2.5-1.5B, llama.cpp"]
+      tr["Traffic<br/>YOLO26n and tracker"]
+    end
+  end
+  kv[("Key Vault")]
+  reg[("Azure ML<br/>model registry")]
+  user -- HTTPS --> gw
+  gw -- "/" --> fe
+  gw -- "/api" --> api
+  api --> det
+  api --> llm
+  api --> tr
+  kv -. "secrets as files" .-> api
+  reg -. "models at start" .-> det
+  reg -.-> tr
+```
+
+From code to cluster:
+
+```mermaid
+flowchart LR
+  train["Laptop GPU<br/>data pipeline, training,<br/>evaluation, ONNX export"]
+  reg[("Azure ML<br/>model registry")]
+  push["Push to main"]
+  ci["CI<br/>lint, types, tests,<br/>image build, smoke test"]
+  cd["CD<br/>build and push images"]
+  acr[("Container registry")]
+  aks["AKS<br/>Helm release"]
+  tf["Terraform"]
+  train -- "if the quality gate passes" --> reg
+  push --> ci --> cd --> acr
+  cd -- "Helm upgrade and smoke test,<br/>if the cluster is running" --> aks
+  acr -.-> aks
+  reg -.-> aks
+  tf -- "cluster, registry, vaults,<br/>identities, budget" --> aks
+```
+
+- The gateway terminates TLS (Let's Encrypt) and routes `/api` to Ray Serve and
+  everything else to the frontend.
+- The four Serve deployments run in one Ray pod on a 2-vCPU node; `Api` calls the other
+  three through deployment handles.
+- Model weights are not in the repository. The detectors are downloaded from the
+  registry when the pod starts; the language model and the videos are baked into the
+  serving image so that a start does not depend on third-party downloads.
+- GitHub Actions logs in to Azure with OIDC; there are no stored credentials.
+
+## Technology choices
+
+| Area | Choice | Why | Not chosen |
+| --- | --- | --- | --- |
+| Detector | Ultralytics YOLO26s, fine-tuned | Trains in hours on an 8 GB GPU; exports to ONNX with NMS included | A permissively licensed detector (the repository is AGPL-3.0 as a consequence) |
+| Inference | ONNX Runtime on CPU | No PyTorch in the serving image; about 0.1 s per photo on two threads | Serving with Ultralytics / PyTorch |
+| Language model | Qwen2.5-1.5B-Instruct, 4-bit GGUF, llama.cpp | Apache-2.0, small enough for two CPU threads next to the detectors on an 8 GB node | A hosted LLM API (cost, and the point was self-hosting); a GPU node (no GPU quota on a free trial) |
+| Experiment tracking | MLflow, local or Azure ML | Runs, metrics and a model registry with a quality gate in front of it | Committing weights; ad-hoc files |
+| Serving | Ray Serve with KubeRay | Independent deployments with their own resources and concurrency, composed in Python | One FastAPI process for everything |
+| Frontend | React, TypeScript, Vite | Small typed client; static files behind nginx | Server-rendered pages |
+| Ingress | Envoy Gateway (Gateway API), cert-manager | Actively maintained Gateway API implementation; rate limit, body limit and TLS are declared next to the routes | ingress-nginx |
+| Packaging | Helm chart | The same manifests with different values locally and on AKS; one release to upgrade or roll back | Kustomize |
+| Infrastructure | Terraform (azurerm) | Everything in Azure is reproducible and can be destroyed with one command | Portal or CLI scripts |
+| Secrets | Key Vault with the CSI driver and workload identity | No secrets in the repository, images, chart values or environment variables | Kubernetes Secrets |
+| CI/CD | GitHub Actions with OIDC | No long-lived cloud credentials | Service-principal secrets |
+| Python tooling | uv, ruff, mypy (strict), pytest | Locked, fast, reproducible | |
+
+More detail on the Kubernetes design is in [`deploy/README.md`](deploy/README.md), on the
+Azure resources in [`infra/README.md`](infra/README.md).
 
 ## Repository layout
 
@@ -19,17 +130,25 @@ Service.
 | `infra/` | Terraform for Azure: AKS, registry, ML workspace, Key Vault, identities, budget ([details](infra/README.md)) |
 | `deploy/` | Helm chart, cluster components, compose gateway ([details](deploy/README.md)) |
 | `scripts/` | Deployment and smoke-test scripts |
+| `docs/` | The recording shown above |
 | `.github/workflows/` | CI (lint, type-check, tests, build, Terraform and Helm checks), CD (images, deployment, smoke test), Demo (start, stop, automatic stop) |
 
-## Development
+## Local setup
 
-Prerequisites: [uv](https://docs.astral.sh/uv/), Node.js 24, GNU Make.
+Prerequisites: [uv](https://docs.astral.sh/uv/), Node.js 24, GNU Make; Docker for the
+container variant. No GPU and no Azure account are needed to run the application with
+dummy models.
 
 ```bash
 make install   # uv sync for both Python projects (TORCH=cpu for CPU-only PyTorch), npm ci
 make check     # lint + type-check + tests, the same steps CI runs
 make help      # all targets
 ```
+
+Fastest way to see it: `make compose-up`, open http://localhost:8080 and log in with
+`roadscan-dev`. The detector and the language model are replaced by dummies that return
+fixed results; everything else is the real code path. The variants with the real models
+are described under [Serving](#serving) and [Containers](#containers).
 
 Optional: `uvx pre-commit install` to run ruff on every commit.
 
@@ -58,8 +177,8 @@ make train       # train -> evaluate on the test split -> ONNX export -> quality
 make mlflow-ui   # inspect runs and the model registry
 ```
 
-All hyperparameters live in `training/configs/train.yaml` (YOLO26s, 640 px, batch 16, mixed
-precision; about 5 GB VRAM). Each pipeline execution is one MLflow run with the full config as
+All hyperparameters live in `training/configs/train.yaml` (YOLO26s, 640 px, batch 20, mixed
+precision, 100 epochs with early stopping; about 5 GB VRAM at batch 16). Each pipeline execution is one MLflow run with the full config as
 parameters, per-epoch training metrics, test-split mAP@0.5, mAP@0.5:0.95 and per-class metrics.
 
 - **Quality gate:** the ONNX model is registered as `roadscan-detector` and given the alias
@@ -76,6 +195,58 @@ parameters, per-epoch training metrics, test-split mAP@0.5, mAP@0.5:0.95 and per
   (`uv sync --extra gpu --extra azure`). To register an already trained checkpoint against
   another server without retraining:
   `uv run python -m rdd.pipeline --weights runs/<run>/weights/best.pt`
+
+## Model card
+
+**Road damage detector** (`roadscan-detector`, version 1)
+
+| | |
+| --- | --- |
+| Architecture | YOLO26s (Ultralytics), initialised from the COCO-pretrained checkpoint, exported to ONNX with NMS |
+| Task | Bounding boxes for D00 longitudinal crack, D10 transverse crack, D20 alligator crack, D40 pothole |
+| Training data | RDD2022 without Norway: Japan, India, Czech Republic, United States, China (motorbike and drone); 24,178 training, 3,023 validation and 3,023 test images |
+| Training run | 10 epochs, batch 24, 640 px, mixed precision, seed 42, on an RTX 4060 Laptop GPU (8 GB) |
+| Intended use | Demonstration. Photos taken from a vehicle or on foot, looking along the road |
+| Not intended for | Road inspection, maintenance decisions or any safety-relevant use |
+
+Results on the held-out test split (never used for training or model selection):
+
+| | mAP@0.5 | AP@0.5 D00 | D10 | D20 | D40 | mAP@0.5:0.95 | Precision | Recall |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Version 1 | 0.582 | 0.612 | 0.570 | 0.661 | 0.484 | 0.297 | 0.614 | 0.544 |
+
+What to keep in mind:
+
+- **Not comparable with published RDD2022 results.** Norway is left out entirely
+  (training, validation and test), and the test split is my own 10 % of the published
+  training data, because the official test labels are not public. Norway's images are
+  wide survey-vehicle frames of about 3650 x 2044 px in which damage becomes very small
+  at 640 px; that kind of imagery is handled worse.
+- **A short run.** Version 1 comes from 10 epochs. The committed configuration is the
+  one for a full run (100 epochs, batch 20, early stopping), which has not been done yet.
+- **The quality gate is provisional.** A model is registered only if test mAP@0.5
+  reaches 0.50. That number is a placeholder chosen before the first run, not a
+  requirement derived from a use case; it will be set again after the full run.
+- **Potholes are the weakest class** (fewest training boxes: 4,807 of 34,938).
+- **Low-confidence detections are shown.** The application displays boxes from a
+  confidence of 0.25; the text says when the detector is unsure.
+- **Bias.** Six countries, mostly daylight and dry roads. Other road surfaces, night,
+  rain or snow are not covered. The United States images are street-level imagery from
+  a mapping service; the others were recorded for the dataset, from vehicles and, for
+  part of China, from a drone.
+- Labels other than the four classes (for example D44 white-line blur, D50 manhole
+  covers, repairs) were dropped; images without the four classes are kept as background.
+
+**Language model.** Qwen2.5-1.5B-Instruct (Alibaba Cloud, Apache-2.0), quantised to
+4 bits (Q4_K_M GGUF), pinned by revision and SHA-256. It is not fine-tuned. Its role is
+to phrase facts it is given; the grounding checks are described under
+[Serving](#serving). The severity it mentions (low, moderate, high) comes from a rule
+in the code based on box size and count; it is not measured and was not validated.
+Generation takes 9 to 23 seconds on two CPU threads.
+
+**Traffic detector.** YOLO26n with the published COCO weights (Ultralytics, AGPL-3.0),
+not trained or evaluated here. Counts on the live-traffic page are estimates without
+ground truth.
 
 ## Serving
 
@@ -203,6 +374,77 @@ dependencies installed from the lockfiles. Build tools (uv, Node) stay in the bu
 CI builds the images and runs the smoke test against the compose stack on every pull
 request (serving without the LLM weights, training with CPU-only PyTorch).
 
+## Deployment
+
+Three steps, each documented where its code lives:
+
+1. **Azure resources** with Terraform: [`infra/README.md`](infra/README.md). A sizing
+   profile `free` fits the 4-vCPU quota of an Azure free trial (two 2-vCPU nodes, no GPU).
+2. **Cluster components and the application** with Helm:
+   [`deploy/README.md`](deploy/README.md). The chart can also be installed on a local
+   minikube cluster.
+3. **Continuous deployment**: after CI passes on `main`, the `CD` workflow builds both
+   images and pushes them to the registry; if the cluster is running it upgrades the
+   Helm release and runs the smoke test against the public URL.
+
+```bash
+make infra-plan && make infra-apply                           # 1: Azure resources
+make aks-credentials platform-install images-push deploy     # 2: first deployment
+make github-setup                                             # 3: values for the workflows
+
+make demo-up      # start the cluster for HOURS=2 and deploy the newest image
+make demo-down    # stop it
+```
+
+The same start and stop are available as the `Demo` workflow in GitHub ("Run workflow").
+Measured on the `free` profile: a start from the stopped state, including the deployment
+and the smoke test, takes about 9 minutes; a stop 2.5 minutes; an image build 9 minutes
+without and under 1 minute with the registry cache.
+
+To remove everything: `terraform destroy` in `infra/` (described in
+[`infra/README.md`](infra/README.md#destroy); documented, not yet exercised on this
+deployment).
+
+## Cost
+
+List prices in USD for Sweden Central, read from the Azure Retail Prices API on
+2026-11-13, for the `free` profile. These are estimates: the subscription is a free
+trial, which does not report billed amounts per resource, so they are not checked
+against an invoice.
+
+| Item | Price | Billed while stopped | Per month |
+| --- | --- | --- | --- |
+| 2 x `Standard_D2ds_v7` nodes (2 vCPU, 8 GB) | 0.166 per hour each | no | 0.33 per running hour |
+| AKS control plane, Free tier | 0 | | 0 |
+| Standard load balancer (created by AKS) | 0.025 per hour | yes (assumed: it keeps its rules while the cluster is stopped) | about 18 |
+| 2 static public IPv4 addresses (gateway, cluster egress) | 0.005 per hour each | yes | about 7 |
+| Container registry, Basic (10 GB included, 5.6 GB used) | 0.167 per day | yes | about 5 |
+| Storage account, Key Vaults, Log Analytics | usage-based | yes | under 1 |
+
+| Usage | Per month |
+| --- | --- |
+| Stopped all month | about 31 |
+| Running 1 hour per day | about 41 |
+| Running all the time | about 275 |
+
+The fixed part is larger than the running part for a demo that is rarely on. It can
+only be removed by destroying the deployment between uses (`terraform destroy`) and
+creating it again when needed.
+
+Cost controls in the project:
+
+- **On-demand operation.** `make demo-up` / `make demo-down` or the `Demo` workflow
+  start and stop the cluster (`az aks stop` deallocates control plane and nodes).
+- **Automatic stop.** A start records a stop time on the cluster; a scheduled workflow
+  stops the cluster when it has passed. GitHub's scheduler turned out to be unreliable
+  for this (two scheduled runs in the first 18 hours instead of one every 30 minutes),
+  so this is a backstop, not a guarantee.
+- **Budget alerts** by e-mail at 50, 80 and 100 % of a monthly amount. They notify; they
+  do not stop anything.
+- **Sizing.** CPU-only inference, one Ray pod, the Free control-plane tier, ephemeral OS
+  disks (nothing is billed for disks while stopped), a daily cap on log ingestion, a
+  registry build cache so that CD runs stay short.
+
 ## Security
 
 - **Login:** one demo password, compared in constant time. A successful login sets a signed
@@ -215,15 +457,57 @@ request (serving without the LLM weights, training with CPU-only PyTorch).
 - **Rate limiting in the application:** login attempts per client address (10 per 5 min),
   analyses per session (6 per min) and per client address (20 per min); `429` with
   `Retry-After`. The client address is taken from `X-Forwarded-For` only as far as our own
-  proxies wrote it. A second, coarser limit is enforced at the gateway (Kubernetes
-  milestone).
+  proxies wrote it. A second, coarser limit (120 requests per minute per address) is enforced at
+  the gateway.
 - **Uploads:** 10 MB limit; file type decided by content (JPEG, PNG, WebP), not by name or
   declared type; pixel count checked from the header before decoding (decompression
   bombs); large photos are decoded at reduced size.
+- **Cluster:** the namespace enforces the `restricted` Pod Security Standard (non-root,
+  no capabilities, default seccomp profile), no pod mounts a Kubernetes API token, and
+  network policies admit traffic to the application only from the gateway.
+- **Azure:** the cluster uses Entra ID with Azure RBAC only (local accounts disabled).
+  The serving pod's identity can read the two secrets and the model registry; the
+  pipeline's identity can push images, operate the cluster, act inside the one
+  namespace and read the demo password for the smoke test. Terraform writes the
+  generated secrets through write-only arguments, so they are not in its state.
 
-## License
+## Limitations
 
-Code: [AGPL-3.0-or-later](LICENSE). The detector is trained with Ultralytics YOLO, which is
-AGPL-3.0, as are the pretrained YOLO26n weights of the traffic page. RDD2022 is licensed
-CC BY 4.0 (Arya et al., 2022). The traffic videos are credited under
-[Live traffic](#live-traffic). Model licence notes follow in the final README.
+- **Demo-grade model.** See the [model card](#model-card): a short training run, a
+  provisional quality gate, no comparison with published results.
+- **Severity is a heuristic** in code, not a measurement.
+- **One replica by design.** The application's rate limiter and the live-traffic clock
+  and counters live in memory; with more than one `Api` or `Traffic` replica they would
+  no longer be exact. The gateway's rate limit is independent of that.
+- **Logout is stateless.** It clears the cookie; a copied token stays valid until it
+  expires (60 minutes). There is one shared password, no user accounts.
+- **Downtime during rollouts.** The Ray pod is replaced in place because the node has no
+  room for a second one; the API is unavailable while the new pod starts.
+- **vLLM backend untested.** `llm.backend: vllm` exists in the code for a GPU node, but
+  no GPU image is built and it was never run; the free trial has no GPU quota.
+- **Automatic stop is not dependable** (see [Cost](#cost)), and `terraform destroy` is
+  documented but was not exercised.
+- **Traffic counts are estimates**; the tracker settings were tuned by eye on the two
+  videos.
+- **Not verified on AKS:** the live-traffic page in a real browser (it was measured
+  through the API there and tested in a browser locally), and the gateway's rate limit
+  with several viewers behind one address.
+- **Development dependencies:** `npm audit` reports moderate findings in `minimatch`
+  through ESLint. They are not part of the shipped frontend; the fix would downgrade
+  ESLint.
+- **Terraform state is local.** One operator; a remote backend is described as an
+  option in `infra/README.md`.
+
+## Licences
+
+| What | Licence | Note |
+| --- | --- | --- |
+| This repository's code | [AGPL-3.0-or-later](LICENSE) | Follows from training with Ultralytics |
+| Ultralytics YOLO, YOLO26s / YOLO26n weights | AGPL-3.0 | The fine-tuned detector is a derivative; weights are not in the repository |
+| RDD2022 dataset | CC BY 4.0 | Arya et al., "RDD2022: A multi-national image dataset for automatic Road Damage Detection", 2022 |
+| Qwen2.5-1.5B-Instruct | Apache-2.0 | Unmodified weights, quantised GGUF from the publisher |
+| Traffic videos | CC0 1.0 and CC BY-SA 3.0 | Credited under [Live traffic](#live-traffic) and on the page; not in the repository |
+| Ray, MLflow, FastAPI, ONNX Runtime, llama.cpp, React, Envoy Gateway, cert-manager, KubeRay | Apache-2.0, MIT or BSD | Used as dependencies |
+
+Anyone who offers a modified version of this application as a network service has to
+make their source available under the AGPL.

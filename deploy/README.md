@@ -25,7 +25,7 @@ flowchart LR
   cluster, AKS; host name, registry, identity IDs that only exist after `terraform apply`).
   Those are values, and Helm also validates them at install time (`templates/_helpers.tpl`)
   and gives the pipeline one atomic, versioned release to upgrade or roll back.
-- **One Ray pod.** The head pod runs the three Serve deployments; there are no workers. On
+- **One Ray pod.** The head pod runs the four Serve deployments; there are no workers. On
   the `free` profile the application node has 2 vCPUs and 8 GB, and the measured memory use
   with both models loaded is 3.6–3.9 GB.
 - **Upgrades in place** (`ray.upgrade: InPlace`). KubeRay's default starts a second Ray
