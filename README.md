@@ -15,8 +15,11 @@ GitHub Actions.
 shortened. Photo: RDD2022 (CC BY 4.0); videos: Wikimedia Commons, credited under
 [Live traffic](#live-traffic).*
 
-The Azure deployment is started on demand and is normally switched off; the recording
-above shows what it serves.
+**Live demo:** <https://roadscan-8oui0.swedencentral.cloudapp.azure.com>
+
+The deployment on Azure runs on demand and is normally switched off, so the link only
+answers while a demo is running; the recording above shows what it serves. Access needs
+the demo password, which I share on request.
 
 **Contents:** [Overview](#overview) · [Architecture](#architecture) ·
 [Technology choices](#technology-choices) · [Repository layout](#repository-layout) ·
