@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test } from 'vitest'
@@ -188,4 +190,36 @@ test('the navigation switches between photo analysis and live traffic', async ()
 
   await user.click(screen.getByRole('link', { name: 'Photo analysis' }))
   expect(await screen.findByRole('button', { name: 'Choose image' })).toBeInTheDocument()
+})
+
+function photoWithGps(): File {
+  // A real JPEG with a GPS position (Prague), written by Pillow.
+  const bytes = readFileSync(join(process.cwd(), 'src/test/data/gps-pillow.jpg'))
+  return new File([bytes], 'prague.jpg', { type: 'image/jpeg' })
+}
+
+test('analysed photos appear on the map, with their GPS position or placed by hand', async () => {
+  // A factory: a Response body can be read only once, and there are two uploads.
+  mockApi({ ...LOGGED_IN, 'POST /api/analyze': () => json(analysisWithDamage) })
+  render(<App />)
+
+  const user = await upload(photoWithGps())
+  expect(await screen.findByText(/carries a GPS position/)).toBeInTheDocument()
+  await upload(imageFile('no-gps.jpg'))
+  expect(await screen.findByText(/carries no GPS position/)).toBeInTheDocument()
+
+  await user.click(screen.getByRole('link', { name: 'Map' }))
+  expect(await screen.findByRole('region', { name: 'Map of analysed photos' })).toBeInTheDocument()
+  const [newest, oldest] = within(screen.getByRole('list', { name: 'Analysed photos' })).getAllByRole(
+    'listitem',
+  )
+  expect(oldest).toHaveTextContent('prague.jpg')
+  expect(oldest).toHaveTextContent('Position from the photo')
+  expect(oldest).toHaveTextContent('1 pothole, 1 longitudinal crack')
+  expect(newest).toHaveTextContent('No position in the photo')
+
+  await user.click(within(newest).getByRole('button', { name: 'Place on map' }))
+  await user.click(screen.getByRole('button', { name: 'use the centre of the map' }))
+  expect(newest).toHaveTextContent('Placed by hand')
+  expect(within(newest).getByRole('button', { name: 'Move' })).toBeInTheDocument()
 })

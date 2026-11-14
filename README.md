@@ -339,8 +339,18 @@ make frontend-dev   # terminal 2: http://localhost:5173, password "roadscan-dev"
 React + TypeScript + Vite. Login screen, image upload with client-side validation (JPEG, PNG,
 WebP; 10 MB), the photo with bounding boxes and labels, the assessment (summary, then recommended
 actions per damage type) with its source (language model or template), and loading, error and session-expired states. Boxes use
-the API's relative coordinates, so they stay aligned at any display size. The second page
-(`#traffic`) shows the two analysed videos with their statistics.
+the API's relative coordinates, so they stay aligned at any display size. The page
+`#traffic` shows the two analysed videos with their statistics.
+
+**Map** (`#map`): the photos analysed in the current browser session, as markers coloured by
+their most severe finding, with a popup per photo (thumbnail, damage found). The position
+is read from the photo's EXIF GPS tags in the browser (`frontend/src/geo/exif.ts`, a small
+parser for the GPS fields only); the server never receives or stores it. Photos without a
+position can be placed by clicking the map, or at the map's centre from the keyboard. The
+list lives in memory only: a reload or logout empties it. Leaflet draws the map, tiles come
+from OpenStreetMap: the Content-Security-Policy allows images from
+`tile.openstreetmap.org` and nothing else from outside, and tile requests carry the site's
+origin as Referer (the tile usage policy asks for one; every other request sends none).
 
 ## Containers
 
@@ -375,7 +385,8 @@ dependencies installed from the lockfiles. Build tools (uv, Node) stay in the bu
   the request size, and applies a coarse rate limit in front of the application's own.
   Containers run with all capabilities dropped; frontend and gateway have read-only
   file systems.
-- **Frontend** responses carry a Content-Security-Policy (`default-src 'self'`), and
+- **Frontend** responses carry a Content-Security-Policy (`default-src 'self'`; images
+  also from the OpenStreetMap tile server for the map), and
   hashed assets are cached for a year while the app shell is always revalidated.
 - **Training** in a container:
   `docker run --rm --gpus all --ipc=host --user "$(id -u):$(id -g)" -v "$PWD/training/data:/app/data" -v "$PWD/training/runs:/app/runs" -e MLFLOW_TRACKING_URI=<server> roadscan-training:local`.
@@ -505,6 +516,7 @@ deployment).
 | Ultralytics YOLO, YOLO26s / YOLO26n weights | AGPL-3.0 | The fine-tuned detector is a derivative; weights are not in the repository |
 | RDD2022 dataset | CC BY 4.0 | Arya et al., "RDD2022: A multi-national image dataset for automatic Road Damage Detection", 2022 |
 | Qwen2.5-1.5B-Instruct | Apache-2.0 | Unmodified weights, quantised GGUF from the publisher |
+| Map | Leaflet: BSD-2-Clause; map data and tiles: © OpenStreetMap contributors, ODbL | Attribution shown on the map; tiles loaded from tile.openstreetmap.org under its usage policy |
 | Traffic videos | CC0 1.0 and CC BY-SA 3.0 | Credited under [Live traffic](#live-traffic) and on the page; not in the repository |
 | Ray, MLflow, FastAPI, ONNX Runtime, llama.cpp, React, Envoy Gateway, cert-manager, KubeRay | Apache-2.0, MIT or BSD | Used as dependencies |
 
