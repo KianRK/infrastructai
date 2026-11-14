@@ -82,7 +82,7 @@ function jpegWithGps(fields: GpsFields): ArrayBuffer {
 
 function fixture(name: string): ArrayBuffer {
   // Tests run from the frontend directory (import.meta.url is not a file URL under jsdom).
-  const bytes = readFileSync(join(process.cwd(), 'src/test/data', name))
+  const bytes = readFileSync(join(process.cwd(), 'src/test/images', name))
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
 }
 
