@@ -194,7 +194,7 @@ test('the navigation switches between photo analysis and live traffic', async ()
 
 function photoWithGps(): File {
   // A real JPEG with a GPS position (Prague), written by Pillow.
-  const bytes = readFileSync(join(process.cwd(), 'src/test/data/gps-pillow.jpg'))
+  const bytes = readFileSync(join(process.cwd(), 'src/test/images/gps-pillow.jpg'))
   return new File([bytes], 'prague.jpg', { type: 'image/jpeg' })
 }
 
